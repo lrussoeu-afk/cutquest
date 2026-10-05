@@ -69,3 +69,9 @@ Never put a Supabase service-role or secret key into this frontend.
 - 7-day averages
 - XP / streak persistence
 - basic PWA support
+
+
+## Latest update
+- Adaptive portion scaling now outputs direct ingredient quantities
+- Generated meals refit to remaining daily calories, protein and net carbs
+- Manual logs support net carbs and optional total carbs
