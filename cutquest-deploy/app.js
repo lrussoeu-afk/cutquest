@@ -604,7 +604,6 @@
             <div>
               <div class="tiny"><b>REMAINING PLAN</b></div>
               <strong>${Math.round(plan.kcal)} kcal · ${Math.round(plan.p)}g P · ${round1(plan.nc)}g net C · ${round1(plan.fiber)}g fiber</strong>
-              <div class="tiny muted">${foods.length} ingredients · ${templates.length} meal structures</div>
             </div>
           </div>
 
