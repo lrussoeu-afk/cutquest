@@ -52,7 +52,7 @@
       .eq("log_date",today())
       .maybeSingle();
     if(error || !log) return null;
-    const [{data:manuals},{data:catalog,error:catalogError}] = await Promise.all([
+    const [{data:manuals},{data:catalog,error:catalogError},{data:userFoods,error:userFoodsError}] = await Promise.all([
       client.from("meals")
         .select("*")
         .eq("daily_log_id",log.id)
@@ -62,10 +62,16 @@
         .select("*")
         .eq("enabled",true)
         .order("preference_score",{ascending:false})
+        .order("name",{ascending:true}),
+      client.from("user_food_items")
+        .select("*")
+        .eq("user_id",user.id)
+        .eq("enabled",true)
         .order("name",{ascending:true})
     ]);
-    if(catalogError) return null;
-    return {client,user,log,manuals:manuals||[],catalog:catalog||[]};
+    if(catalogError || userFoodsError) return null;
+    const saved=(userFoods||[]).map(f=>({...f,personal:true,preference_score:10}));
+    return {client,user,log,manuals:manuals||[],catalog:[...saved,...(catalog||[])]};
   }
 
   async function recalc(ctx){
@@ -81,9 +87,10 @@
       a.p += Number(m.protein_g||0);
       a.c += Number(m.carbs_g||0);
       a.nc += Number(m.net_carbs_g??m.carbs_g??0);
+      a.fiber += Number(m.fiber_g||0);
       a.f += Number(m.fat_g||0);
       return a;
-    },{kcal:0,p:0,c:0,nc:0,f:0});
+    },{kcal:0,p:0,c:0,nc:0,fiber:0,f:0});
 
     const generated = meals.filter(x=>x.source==="generated");
     const missionComplete = generated.length>0 && generated.every(x=>x.completed);
@@ -95,6 +102,7 @@
       protein_g:sum.p,
       carbs_g:sum.c,
       net_carbs_g:sum.nc,
+      fiber_g:sum.fiber,
       fat_g:sum.f,
       completed:missionComplete,
       xp_earned:xp,
@@ -112,6 +120,7 @@
       protein:Number(food.protein_g_per_100g||0)*factor,
       carbs:Number(food.carbs_g_per_100g||0)*factor,
       netCarbs:Number(food.net_carbs_g_per_100g||0)*factor,
+      fiber:Number(food.fiber_g_per_100g||0)*factor,
       fat:Number(food.fat_g_per_100g||0)*factor
     };
   }
@@ -144,7 +153,7 @@
       return;
     }
     const m=catalogMacros(food,grams);
-    if(preview)preview.textContent=`${Math.round(m.calories)} kcal · ${round1(m.protein)}g P · ${round1(m.netCarbs)}g net C · ${round1(m.fat)}g F`;
+    if(preview)preview.textContent=`${Math.round(m.calories)} kcal · ${round1(m.protein)}g P · ${round1(m.netCarbs)}g net C · ${round1(m.fiber)}g fiber · ${round1(m.fat)}g F`;
     if(button)button.disabled=false;
   }
 
@@ -170,6 +179,7 @@
       protein_g:round1(m.protein),
       carbs_g:round1(m.carbs),
       net_carbs_g:round1(m.netCarbs),
+      fiber_g:round1(m.fiber),
       fat_g:round1(m.fat),
       ingredients:[`${round1(grams)} g ${food.name.toLowerCase()}`],
       components:[{slot:"logged",food_id:food.id,name:food.name,grams:round1(grams)}],
