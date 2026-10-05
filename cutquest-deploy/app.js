@@ -12,7 +12,7 @@
 
   window.CutQuestSB = sb;
 
-  let user=null,profile=null,log=null,meals=[],history=[],weighins=[],foods=[],templates=[];
+  let user=null,profile=null,log=null,meals=[],history=[],weighins=[],foods=[],templates=[],settingsOpen=false;
   const today=()=>new Date().toISOString().slice(0,10);
   const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
   const round1=n=>Math.round(Number(n||0)*10)/10;
@@ -532,6 +532,7 @@
           <span class="pill">${Math.round(m.protein_g)}g P</span>
           <span class="pill">${round1(m.net_carbs_g??m.carbs_g)}g net C</span>
           <span class="pill">${round1(m.carbs_g)}g total C</span>
+          <span class="pill">${round1(m.fiber_g||0)}g fiber</span>
           <span class="pill">${Math.round(m.fat_g)}g F</span>
         </div>
         <ul>${(m.ingredients||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
@@ -544,7 +545,7 @@
 
   function render(){
     const loggedNow=totals(true);
-    const plan=meals.filter(m=>m.source==="generated"&&!m.completed).reduce((a,m)=>{a.kcal+=Number(m.calories||0);a.p+=Number(m.protein_g||0);a.c+=Number(m.carbs_g||0);a.nc+=Number(m.net_carbs_g??m.carbs_g??0);a.f+=Number(m.fat_g||0);return a;},{kcal:0,p:0,c:0,nc:0,f:0});
+    const plan=meals.filter(m=>m.source==="generated"&&!m.completed).reduce((a,m)=>{a.kcal+=Number(m.calories||0);a.p+=Number(m.protein_g||0);a.c+=Number(m.carbs_g||0);a.nc+=Number(m.net_carbs_g??m.carbs_g??0);a.fiber+=Number(m.fiber_g||0);a.f+=Number(m.fat_g||0);return a;},{kcal:0,p:0,c:0,nc:0,fiber:0,f:0});
     const remainingKcal=Math.max(0,Number(profile.calorie_target)-loggedNow.kcal);
     const remainingProtein=Math.max(0,Number(profile.protein_target)-loggedNow.p);
     const remainingNet=Math.max(0,Number(profile.net_carb_target??30)-loggedNow.nc);
@@ -552,7 +553,6 @@
     const avg=recent7.length?Math.round(recent7.reduce((a,x)=>a+Number(x.calories||0),0)/recent7.length):"—";
     const proteinHit=recent7.length?`${recent7.filter(x=>Number(x.protein_g)>=Number(x.protein_target)).length}/${recent7.length}`:"—";
     const latestWeight=weighins[0]?`${Number(weighins[0].weight_kg).toFixed(1)} kg`:"—";
-    const planDelta=Math.round(plan.kcal-remainingKcal);
 
     root.innerHTML=`
       <main class="wrap">
@@ -562,17 +562,19 @@
             <div><div class="brand-title">CutQuest</div><div class="tiny muted">${esc(user.email)}</div></div>
           </div>
           <div class="actions">
-            <button id="saveSettings" class="btn ghost">Save settings</button>
-            <button id="signOut" class="btn ghost">Sign out</button>
+            <button id="settingsToggle" class="btn ghost icon-btn" aria-label="Settings" title="Settings">⚙</button>
+            <button id="signOut" class="btn ghost icon-btn" aria-label="Sign out" title="Sign out">↪</button>
           </div>
         </header>
 
-        <section class="settings card">
+        <section id="settingsPanel" class="settings card ${settingsOpen?"":"hidden"}">
           <div><label>Calories</label><input id="calorieTarget" type="number" value="${Number(profile.calorie_target)}"></div>
           <div><label>Protein g</label><input id="proteinTarget" type="number" value="${Number(profile.protein_target)}"></div>
           <div><label>Net carbs g</label><input id="netCarbTarget" type="number" value="${Number(profile.net_carb_target??30)}"></div>
+          <div><label>Fiber g</label><input id="fiberTarget" type="number" value="${Number(profile.fiber_target??30)}"></div>
           <div><label>Snack</label><input id="snackTime" type="time" value="${String(profile.eating_window_start||"16:00").slice(0,5)}"></div>
           <div><label>Dinner</label><input id="dinnerTime" type="time" value="${String(profile.eating_window_end||"17:45").slice(0,5)}"></div>
+          <button id="saveSettings" class="btn primary">Save</button>
         </section>
 
         <nav class="tabs">
@@ -585,7 +587,7 @@
             <div>
               <p class="eyebrow">TODAY'S MISSION</p>
               <h1>Hit the target.<br>Keep the streak alive.</h1>
-              <p class="muted">${Number(profile.calorie_target)} kcal · ${Number(profile.protein_target)}g protein · ${Number(profile.net_carb_target??30)}g net carbs</p>
+              <p class="muted">${Number(profile.calorie_target)} kcal · ${Number(profile.protein_target)}g protein · ${Number(profile.net_carb_target??30)}g net carbs · ${Number(profile.fiber_target??30)}g fiber</p>
             </div>
             <button id="generate" class="btn primary">Generate day</button>
           </div>
@@ -594,6 +596,7 @@
             <div class="card stat"><span>Calories logged</span><strong>${Math.round(Number(log.calories||0))}</strong></div>
             <div class="card stat"><span>Protein logged</span><strong>${Math.round(Number(log.protein_g||0))} g</strong></div>
             <div class="card stat"><span>Net carbs logged</span><strong>${round1(log.net_carbs_g??log.carbs_g)} g</strong></div>
+            <div class="card stat"><span>Fiber logged</span><strong>${round1(log.fiber_g||0)} g</strong></div>
             <div class="card stat"><span>XP today</span><strong>${Number(log.xp_earned||0)}</strong></div>
           </div>
 
@@ -603,10 +606,9 @@
               <strong>${Math.round(plan.kcal)} kcal · ${Math.round(plan.p)}g P · ${round1(plan.nc)}g net C</strong>
               <div class="tiny muted">${foods.length} ingredients · ${templates.length} meal structures</div>
             </div>
-            <strong>${planDelta>0?"+":""}${planDelta} kcal vs remaining</strong>
           </div>
 
-          <div class="meals">${meals.map(mealCard).join("")}</div>
+          <div class="meals">${meals.filter(m=>m.source==="generated").map(mealCard).join("")}</div>
         </section>
 
         <section id="progress" class="panel">
@@ -647,7 +649,8 @@
       </main>`;
 
     document.querySelector("#signOut").onclick=()=>sb.auth.signOut();
-    document.querySelector("#saveSettings").onclick=saveSettings;
+    document.querySelector("#settingsToggle").onclick=()=>{settingsOpen=!settingsOpen;render();};
+    document.querySelector("#saveSettings")?.addEventListener("click",saveSettings);
     document.querySelector("#generate").onclick=()=>generate(true);
     document.querySelector("#saveWeight").onclick=saveWeight;
     document.querySelectorAll("[data-toggle]").forEach(b=>b.onclick=()=>toggleMeal(b.dataset.toggle));
