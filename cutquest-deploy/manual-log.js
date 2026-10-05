@@ -8,19 +8,18 @@
   style.textContent = `
     .manual-box{margin:12px 0 14px}
     .manual-head{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:12px}
-    .manual-grid{display:grid;grid-template-columns:2fr repeat(5,.7fr) auto;gap:8px;align-items:end}
+    .manual-grid{display:grid;grid-template-columns:minmax(170px,1.7fr) repeat(6,.65fr) auto auto;gap:8px;align-items:end}
     .catalog-grid{display:grid;grid-template-columns:minmax(220px,2fr) .7fr minmax(220px,1.5fr) auto;gap:8px;align-items:end}
     .catalog-grid select{width:100%;background:#0e1011;color:#fff;border:1px solid #303638;border-radius:9px;padding:11px;font:inherit}
     .catalog-preview{min-height:42px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line);border-radius:10px}
     .manual-divider{height:1px;background:var(--line);margin:16px 0}
-    .manual-list{margin-top:12px;border-top:1px solid var(--line)}
+    .record-check{display:flex;gap:7px;align-items:center;margin:0;padding:0 4px 10px;color:#aeb6b8;font-size:11px;white-space:nowrap}.record-check input{width:auto}.icon-add{min-width:42px;font-size:20px;line-height:1}.form-msg{min-height:12px;margin-top:6px}.manual-list{margin-top:12px;border-top:1px solid var(--line)}
     .manual-row{display:grid;grid-template-columns:1.5fr repeat(5,.6fr) auto;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #242a2c}
     .manual-row .btn{padding:7px 9px}
     @media(max-width:720px){
       .manual-head{align-items:flex-start;flex-direction:column}
-      .manual-grid{grid-template-columns:1fr 1fr}
-      .manual-grid .manual-name{grid-column:1/-1}
-      .manual-grid .btn{grid-column:1/-1}
+      .manual-grid{grid-template-columns:1fr 1fr 1fr}
+      .manual-grid .manual-name{grid-column:1/-1}.manual-grid .record-check{grid-column:1/3}.manual-grid .icon-add{grid-column:3}
       .catalog-grid{grid-template-columns:1fr 1fr}
       .catalog-grid .catalog-food{grid-column:1/-1}
       .catalog-grid .catalog-preview{grid-column:1/-1}
@@ -141,7 +140,7 @@
     const preview=document.querySelector("#catalogPreview");
     const button=document.querySelector("#catalogAdd");
     if(!food){
-      if(preview)preview.textContent="Choose a food to see its macros.";
+      if(preview)preview.textContent="";
       if(button)button.disabled=true;
       return;
     }
@@ -345,49 +344,40 @@
     box.id = "manualFoodBox";
     box.className = "card manual-box";
     box.innerHTML = `
-      <div class="manual-head">
-        <div>
-          <p class="eyebrow">QUICK FOOD LOG</p>
-          <strong>Pick from your CutQuest food catalogue</strong>
-        </div>
-        <span class="tiny muted">Choose the food and quantity. CutQuest does the macro maths.</span>
-      </div>
       <div class="catalog-grid">
         <div class="catalog-food">
           <label>Food</label>
           <select id="catalogFood">
-            <option value="">Select a food…</option>
-            ${ctx.catalog.map(f=>`<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("")}
+            <option value="">Select…</option>
+            ${ctx.catalog.map(f=>`<option value="${esc(f.id)}">${esc(f.name)}${f.personal?" ★":""}</option>`).join("")}
           </select>
         </div>
         <div>
-          <label>Quantity g</label>
+          <label>g</label>
           <input id="catalogQty" type="number" min="1" step="1" placeholder="250">
         </div>
-        <div id="catalogPreview" class="catalog-preview tiny muted">Choose a food to see its macros.</div>
-        <button id="catalogAdd" class="btn primary" disabled>+ Log food</button>
+        <div id="catalogPreview" class="catalog-preview tiny muted"></div>
+        <button id="catalogAdd" class="btn primary icon-add" aria-label="Add" title="Add" disabled>+</button>
       </div>
-      <div id="catalogMsg" class="tiny muted" style="margin-top:8px"></div>
+      <div id="catalogMsg" class="tiny muted form-msg"></div>
 
       <div class="manual-divider"></div>
 
-      <div class="manual-head">
-        <div>
-          <p class="eyebrow">CUSTOM FOOD LOG</p>
-          <strong>Or enter something that isn't in the catalogue</strong>
-        </div>
-        <span class="tiny muted">Net carbs are the keto number. Total carbs is optional.</span>
+      <div class="manual-grid custom-grid">
+        <div class="manual-name"><label>Custom</label><input id="manualName" placeholder="Food"></div>
+        <div><label>g</label><input id="manualQty" type="number" min="1" step="1" placeholder="100"></div>
+        <div><label>kcal</label><input id="manualCalories" type="number" min="0" step="1"></div>
+        <div><label>P</label><input id="manualProtein" type="number" min="0" step=".1"></div>
+        <div><label>Net C</label><input id="manualNetCarbs" type="number" min="0" step=".1"></div>
+        <div><label>Fiber</label><input id="manualFiber" type="number" min="0" step=".1"></div>
+        <div><label>Fat</label><input id="manualFat" type="number" min="0" step=".1"></div>
+        <label class="record-check" title="Keep this food in your list">
+          <input id="manualRecord" type="checkbox" checked>
+          <span>Save</span>
+        </label>
+        <button id="manualAdd" class="btn primary icon-add" aria-label="Add" title="Add">+</button>
       </div>
-      <div class="manual-grid">
-        <div class="manual-name"><label>Food / meal</label><input id="manualName" placeholder="e.g. 2 eggs + butter"></div>
-        <div><label>kcal</label><input id="manualCalories" type="number" min="0" step="1" placeholder="250"></div>
-        <div><label>Protein</label><input id="manualProtein" type="number" min="0" step=".1" placeholder="20"></div>
-        <div><label>Net carbs</label><input id="manualNetCarbs" type="number" min="0" step=".1" placeholder="3"></div>
-        <div><label>Total carbs</label><input id="manualTotalCarbs" type="number" min="0" step=".1" placeholder="optional"></div>
-        <div><label>Fat</label><input id="manualFat" type="number" min="0" step=".1" placeholder="15"></div>
-        <button id="manualAdd" class="btn primary">+ Log food</button>
-      </div>
-      <div id="manualMsg" class="tiny muted" style="margin-top:8px"></div>
+      <div id="manualMsg" class="tiny muted form-msg"></div>
       ${manualRows(ctx)}
     `;
 
@@ -400,7 +390,6 @@
       const m = ctx.manuals.find(x=>x.id===btn.dataset.manualDelete);
       if(m) btn.onclick = () => deleteFood(ctx,m.id,m.name);
     });
-    decorateManualCards(ctx);
   }
 
   const observer = new MutationObserver(()=>inject().catch(()=>{}));
