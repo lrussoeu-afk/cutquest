@@ -327,6 +327,86 @@
 
   window.CutQuestRefitPlan=()=>refitRemaining({});
 
+  function showLogin(message=""){
+    user=null;
+    root.innerHTML=`
+      <main class="auth-wrap">
+        <div class="auth-card">
+          <div class="logo">CQ</div>
+          <p class="eyebrow">CUTQUEST</p>
+          <h1>Welcome back.</h1>
+          <div class="form-grid">
+            <div>
+              <label>Email</label>
+              <input id="authEmail" type="email" autocomplete="email" inputmode="email">
+            </div>
+            <div>
+              <label>Password</label>
+              <input id="authPassword" type="password" autocomplete="current-password">
+            </div>
+          </div>
+          <p id="authMsg" class="tiny muted">${esc(message)}</p>
+          <button id="authSignIn" class="btn primary full">Sign in</button>
+          <button id="authCreate" class="btn ghost full" style="margin-top:8px">Create owner account</button>
+        </div>
+      </main>`;
+
+    const email=document.querySelector("#authEmail");
+    const password=document.querySelector("#authPassword");
+    const msg=document.querySelector("#authMsg");
+    const signIn=document.querySelector("#authSignIn");
+    const create=document.querySelector("#authCreate");
+
+    async function doSignIn(){
+      const e=email.value.trim();
+      const p=password.value;
+      if(!e||!p){
+        msg.textContent="Enter your email and password.";
+        return;
+      }
+      signIn.disabled=true;
+      create.disabled=true;
+      msg.textContent="Signing in…";
+      const {error}=await sb.auth.signInWithPassword({email:e,password:p});
+      if(error){
+        msg.textContent=error.message;
+        signIn.disabled=false;
+        create.disabled=false;
+      }
+    }
+
+    async function doCreate(){
+      const e=email.value.trim();
+      const p=password.value;
+      if(!e||!p){
+        msg.textContent="Enter an email and password.";
+        return;
+      }
+      signIn.disabled=true;
+      create.disabled=true;
+      msg.textContent="Creating account…";
+      try{
+        const res=await fetch(cfg.OWNER_CREATE_URL,{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({email:e,password:p})
+        });
+        const body=await res.json().catch(()=>({}));
+        if(!res.ok) throw new Error(body.error||body.message||"Could not create account.");
+        const {error}=await sb.auth.signInWithPassword({email:e,password:p});
+        if(error) throw error;
+      }catch(err){
+        msg.textContent=err.message||"Could not create account.";
+        signIn.disabled=false;
+        create.disabled=false;
+      }
+    }
+
+    signIn.onclick=doSignIn;
+    create.onclick=doCreate;
+    password.addEventListener("keydown",e=>{if(e.key==="Enter")doSignIn();});
+  }
+
   async function enter(u){
     user=u;
     let r=await sb.from("profiles").select("*").eq("id",u.id).maybeSingle();
@@ -667,10 +747,13 @@
     if(!session)showLogin();
   });
 
-  sb.auth.getSession().then(async({data})=>{
-    if(data.session?.user)await enter(data.session.user);
-    else showLogin();
-  });
+  sb.auth.getSession()
+    .then(async({data,error})=>{
+      if(error)return showLogin(error.message);
+      if(data.session?.user)await enter(data.session.user);
+      else showLogin();
+    })
+    .catch(err=>showLogin(err?.message||"Could not restore your session."));
 
   if("serviceWorker" in navigator){
     window.addEventListener("load",()=>navigator.serviceWorker.register("./service-worker.js").catch(()=>{}));
