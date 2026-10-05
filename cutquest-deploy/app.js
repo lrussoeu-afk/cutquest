@@ -127,7 +127,7 @@
       Math.abs(a[1]+snack[1]-Number(profile.calorie_target))-
       Math.abs(b[1]+snack[1]-Number(profile.calorie_target))
     )[0];
-    await sb.from("meals").delete().eq("daily_log_id",log.id);
+    await sb.from("meals").delete().eq("daily_log_id",log.id).eq("source","generated");
     const r=await sb.from("meals").insert([
       mealRow(snack,"snack",profile.eating_window_start||"16:00"),
       mealRow(dinner,"dinner",profile.eating_window_end||"17:45")
@@ -265,7 +265,7 @@
   }
 
   function render(){
-    const plan=totals(false);
+    const plan=meals.filter(m=>m.source==="generated").reduce((a,m)=>{a.kcal+=Number(m.calories||0);a.p+=Number(m.protein_g||0);a.c+=Number(m.carbs_g||0);a.f+=Number(m.fat_g||0);return a;},{kcal:0,p:0,c:0,f:0});
     const recent7=history.slice(0,7);
     const avg=recent7.length?Math.round(recent7.reduce((a,x)=>a+Number(x.calories||0),0)/recent7.length):"—";
     const proteinHit=recent7.length?`${recent7.filter(x=>Number(x.protein_g)>=Number(x.protein_target)).length}/${recent7.length}`:"—";
