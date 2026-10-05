@@ -101,12 +101,50 @@
     return type==="snack"?snacks:dinners;
   }
 
+  function formatCount(n,unit){
+    if(unit==="egg"||unit==="eggs"){
+      const rounded=Math.max(.5,Math.round(n*2)/2);
+      const label=rounded===1?"egg":"eggs";
+      return `${rounded%1===0?rounded.toFixed(0):rounded.toFixed(1)} ${label}`;
+    }
+    if(unit==="can"||unit==="cans"){
+      const rounded=Math.max(.5,Math.round(n*2)/2);
+      const label=rounded===1?"can":"cans";
+      return `${rounded%1===0?rounded.toFixed(0):rounded.toFixed(1)} ${label}`;
+    }
+    return null;
+  }
+
+  function scaleIngredient(text,factor){
+    const g=text.match(/^([0-9]+(?:\.[0-9]+)?)\s*g\s+(.+)$/i);
+    if(g){
+      const grams=Math.max(1,Math.round(Number(g[1])*factor/5)*5);
+      return `${grams} g ${g[2]}`;
+    }
+
+    const count=text.match(/^([0-9]+(?:\.[0-9]+)?)\s+(egg|eggs|can|cans)\b\s*(.*)$/i);
+    if(count){
+      const scaled=formatCount(Number(count[1])*factor,count[2].toLowerCase());
+      return scaled+(count[3]?` ${count[3]}`:"");
+    }
+
+    if(/^large green salad$/i.test(text)){
+      if(factor<.45) return "small green salad";
+      if(factor<.8) return "medium green salad";
+      return "large green salad";
+    }
+
+    if(/salad|peppers|herbs|mustard/i.test(text)&&factor<.75){
+      return `small portion of ${text.toLowerCase()}`;
+    }
+
+    return text;
+  }
+
   function portionRecipe(arr,kcalBudget){
     const baseKcal=Number(arr[1]||1);
     const factor=clamp(Number(kcalBudget||0)/baseKcal,0.05,1.35);
-    const ingredients=(factor>.97&&factor<1.03)
-      ? arr[5]
-      : [`Scale this base recipe to ~${Math.round(factor*100)}% of the listed portion`,...arr[5]];
+    const ingredients=arr[5].map(x=>scaleIngredient(x,factor));
     return {
       name:arr[0],
       calories:Math.max(1,Math.round(baseKcal*factor)),
