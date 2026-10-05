@@ -200,32 +200,69 @@
 
   async function addFood(ctx){
     const name = document.querySelector("#manualName")?.value.trim();
-    const calories = Number(document.querySelector("#manualCalories")?.value);
-    const protein = Number(document.querySelector("#manualProtein")?.value || 0);
+    const qty = Number(document.querySelector("#manualQty")?.value || 0);
+    const caloriesRaw = document.querySelector("#manualCalories")?.value ?? "";
+    const proteinRaw = document.querySelector("#manualProtein")?.value ?? "";
     const netRaw = document.querySelector("#manualNetCarbs")?.value ?? "";
-    const totalRaw = document.querySelector("#manualTotalCarbs")?.value ?? "";
-    const netCarbs = Number(netRaw === "" ? (totalRaw || 0) : netRaw);
-    const totalCarbs = Math.max(netCarbs, Number(totalRaw === "" ? netCarbs : totalRaw));
-    const fat = Number(document.querySelector("#manualFat")?.value || 0);
+    const fiberRaw = document.querySelector("#manualFiber")?.value ?? "";
+    const fatRaw = document.querySelector("#manualFat")?.value ?? "";
+    const calories = Number(caloriesRaw);
+    const protein = Number(proteinRaw || 0);
+    const netCarbs = Number(netRaw || 0);
+    const fiber = Number(fiberRaw || 0);
+    const totalCarbs = Math.max(0, netCarbs + fiber);
+    const fat = Number(fatRaw || 0);
+    const record = document.querySelector("#manualRecord")?.checked ?? true;
     const msg = document.querySelector("#manualMsg");
 
     if(!name || !Number.isFinite(calories) || calories < 0){
-      if(msg) msg.textContent = "Add a food name and valid calories.";
+      if(msg) msg.textContent = "Add a name and calories.";
       return;
     }
 
+    if(record){
+      const complete = qty>0 && [caloriesRaw,proteinRaw,netRaw,fiberRaw,fatRaw].every(v=>String(v).trim()!=="");
+      if(!complete){
+        if(msg) msg.textContent = "To save this food, add quantity and all macros.";
+        return;
+      }
+    }
+
     if(msg) msg.textContent = "Logging…";
+
+    if(record){
+      const per100=100/qty;
+      const {error:saveError}=await ctx.client.from("user_food_items").upsert({
+        user_id:ctx.user.id,
+        name,
+        calories_per_100g:round1(calories*per100),
+        protein_g_per_100g:round1(protein*per100),
+        carbs_g_per_100g:round1(totalCarbs*per100),
+        net_carbs_g_per_100g:round1(netCarbs*per100),
+        fiber_g_per_100g:round1(fiber*per100),
+        fat_g_per_100g:round1(fat*per100),
+        default_portion_g:qty,
+        enabled:true,
+        updated_at:new Date().toISOString()
+      },{onConflict:"user_id,name"});
+      if(saveError){
+        if(msg) msg.textContent = saveError.message;
+        return;
+      }
+    }
+
     const {error} = await ctx.client.from("meals").insert({
       user_id:ctx.user.id,
       daily_log_id:ctx.log.id,
       meal_type:"meal",
       planned_time:null,
       eaten_at:new Date().toISOString(),
-      name,
+      name:qty>0 ? name+" · "+round1(qty)+" g" : name,
       calories,
       protein_g:Number.isFinite(protein)?protein:0,
       carbs_g:Number.isFinite(totalCarbs)?totalCarbs:0,
       net_carbs_g:Number.isFinite(netCarbs)?netCarbs:0,
+      fiber_g:Number.isFinite(fiber)?fiber:0,
       fat_g:Number.isFinite(fat)?fat:0,
       ingredients:[],
       source:"manual",
@@ -241,7 +278,6 @@
     if(window.CutQuestRefitPlan) await window.CutQuestRefitPlan();
     else location.reload();
   }
-
   async function deleteFood(ctx,id,name){
     if(!confirm(`Delete "${name}" from today's log?`)) return;
     const {error} = await ctx.client.from("meals")
