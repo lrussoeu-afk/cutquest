@@ -1,5 +1,6 @@
 (() => {
   const today = () => new Date().toISOString().slice(0,10);
+  let editingMealId = null;
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
   }[c]));
@@ -16,8 +17,10 @@
     .record-check{display:flex;gap:7px;align-items:center;margin:0;padding:0 4px 10px;color:#aeb6b8;font-size:11px;white-space:nowrap}.record-check input{width:auto}.icon-add{min-width:42px;font-size:20px;line-height:1}.form-msg{min-height:12px;margin-top:6px}.manual-list{margin-top:12px;border-top:1px solid var(--line)}
     .manual-header,.manual-row{display:grid;grid-template-columns:minmax(150px,1.5fr) repeat(6,.72fr) auto;gap:8px;align-items:center}
     .manual-header{padding:0 0 8px;color:#758083;font-size:10px;text-transform:uppercase;letter-spacing:.07em}
+    .manual-header span:not(:first-child),.manual-row>span{text-align:center;justify-self:center}
     .manual-row{padding:9px 0;border-bottom:1px solid #242a2c}
-    .manual-row .btn{padding:7px 9px}.icon-delete{width:34px;height:34px;padding:0!important;font-size:18px;display:grid;place-items:center}
+    .manual-row-actions{display:flex;gap:6px;justify-content:flex-end}
+    .manual-row .btn{padding:7px 9px}.icon-delete,.icon-edit{width:34px;height:34px;padding:0!important;display:grid;place-items:center}.icon-delete{font-size:18px}.icon-edit svg{width:15px;height:15px;fill:currentColor}
     @media(max-width:720px){
       .manual-head{align-items:flex-start;flex-direction:column}
       .manual-grid{grid-template-columns:1fr 1fr 1fr}
@@ -254,6 +257,33 @@
       }
     }
 
+    if(editingMealId){
+      const {error:updateError}=await ctx.client.from("meals").update({
+        name:qty>0 ? name+" · "+round1(qty)+" g" : name,
+        calories,
+        protein_g:Number.isFinite(protein)?protein:0,
+        carbs_g:Number.isFinite(totalCarbs)?totalCarbs:0,
+        net_carbs_g:Number.isFinite(netCarbs)?netCarbs:0,
+        fiber_g:Number.isFinite(fiber)?fiber:0,
+        fat_g:Number.isFinite(fat)?fat:0,
+        ingredients:[],
+        completed:true
+      })
+      .eq("id",editingMealId)
+      .eq("user_id",ctx.user.id);
+
+      if(updateError){
+        if(msg) msg.textContent=updateError.message;
+        return;
+      }
+
+      editingMealId=null;
+      await recalc(ctx);
+      if(window.CutQuestRefitPlan) await window.CutQuestRefitPlan();
+      else location.reload();
+      return;
+    }
+
     const {error} = await ctx.client.from("meals").insert({
       user_id:ctx.user.id,
       daily_log_id:ctx.log.id,
@@ -281,6 +311,34 @@
     if(window.CutQuestRefitPlan) await window.CutQuestRefitPlan();
     else location.reload();
   }
+  function startEdit(m){
+    editingMealId=m.id;
+    const qtyFromComponent=Array.isArray(m.components)&&m.components.length
+      ? Number(m.components[0]?.grams||0)
+      : 0;
+    const qtyMatch=String(m.name||"").match(/ · ([0-9]+(?:\.[0-9]+)?) g$/);
+    const qty=qtyFromComponent || Number(qtyMatch?.[1]||0);
+    const cleanName=String(m.name||"").replace(/ · [0-9]+(?:\.[0-9]+)? g$/,"");
+
+    document.querySelector("#manualName").value=cleanName;
+    document.querySelector("#manualQty").value=qty||"";
+    document.querySelector("#manualCalories").value=round1(m.calories||0);
+    document.querySelector("#manualProtein").value=round1(m.protein_g||0);
+    document.querySelector("#manualCarbs").value=round1(m.carbs_g||0);
+    document.querySelector("#manualNetCarbs").value=round1(m.net_carbs_g??m.carbs_g??0);
+    document.querySelector("#manualFiber").value=round1(m.fiber_g||0);
+    document.querySelector("#manualFat").value=round1(m.fat_g||0);
+    document.querySelector("#manualRecord").checked=false;
+
+    const add=document.querySelector("#manualAdd");
+    if(add){
+      add.textContent="✓";
+      add.title="Save edit";
+      add.setAttribute("aria-label","Save edit");
+    }
+    document.querySelector("#manualName")?.focus();
+  }
+
   async function deleteFood(ctx,id,name){
     if(!confirm(`Delete "${name}" from today's log?`)) return;
     const {error} = await ctx.client.from("meals")
@@ -332,7 +390,7 @@
         <span>${Math.round(Number(m.net_carbs_g??m.carbs_g??0))}</span>
         <span>${Math.round(Number(m.fiber_g||0))}</span>
         <span>${Math.round(Number(m.fat_g||0))}</span>
-        <button class="btn ghost icon-delete" aria-label="Delete" title="Delete" data-manual-delete="${esc(m.id)}">×</button>
+        <div class="manual-row-actions"><button class="btn ghost icon-edit" aria-label="Edit" title="Edit" data-manual-edit="${esc(m.id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17.3V20h2.7l8-8-2.7-2.7-8 8Zm12.8-7.4 1.3-1.3a1 1 0 0 0 0-1.4l-1.3-1.3a1 1 0 0 0-1.4 0L14 7.2l2.8 2.7Z"/></svg></button><button class="btn ghost icon-delete" aria-label="Delete" title="Delete" data-manual-delete="${esc(m.id)}">×</button></div>
       </div>`).join("")+'</div>';
   }
 
@@ -392,6 +450,10 @@
     box.querySelector("#catalogQty").oninput = () => updateCatalogPreview(ctx,false);
     box.querySelector("#catalogAdd").onclick = () => addCatalogFood(ctx);
     box.querySelector("#manualAdd").onclick = () => addFood(ctx);
+    box.querySelectorAll("[data-manual-edit]").forEach(btn=>{
+      const m = ctx.manuals.find(x=>x.id===btn.dataset.manualEdit);
+      if(m) btn.onclick = () => startEdit(m);
+    });
     box.querySelectorAll("[data-manual-delete]").forEach(btn=>{
       const m = ctx.manuals.find(x=>x.id===btn.dataset.manualDelete);
       if(m) btn.onclick = () => deleteFood(ctx,m.id,m.name);
