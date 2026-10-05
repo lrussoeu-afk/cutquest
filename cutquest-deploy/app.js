@@ -592,7 +592,11 @@
           </div>
 
           <div class="progress-strip">
-            <div><div class="tiny"><b>REMAINING PLAN</b></div><strong>${Math.round(plan.kcal)} kcal · ${Math.round(plan.p)}g P · ${round1(plan.nc)}g net C</strong></div>
+            <div>
+              <div class="tiny"><b>REMAINING PLAN</b></div>
+              <strong>${Math.round(plan.kcal)} kcal · ${Math.round(plan.p)}g P · ${round1(plan.nc)}g net C</strong>
+              <div class="tiny muted">${foods.length} ingredients · ${templates.length} meal structures</div>
+            </div>
             <strong>${planDelta>0?"+":""}${planDelta} kcal vs remaining</strong>
           </div>
 
