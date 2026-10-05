@@ -140,6 +140,38 @@
     return ctx.catalog.find(f=>f.id===id)||null;
   }
 
+  function foodGroup(food){
+    if(food.personal) return "Saved";
+    if(food.category==="protein") return "Proteins";
+    if(food.category==="vegetable" && Array.isArray(food.tags) && food.tags.includes("green")) return "Greens";
+    if(food.category==="vegetable") return "Vegetables";
+    if(food.category==="dairy") return "Dairy";
+    if(food.category==="fat") return "Fats";
+    if(food.category==="sauce") return "Sauces";
+    return "Extras";
+  }
+
+  function catalogOptions(catalog){
+    const order=["Saved","Proteins","Greens","Vegetables","Dairy","Fats","Sauces","Extras"];
+    const groups=new Map(order.map(x=>[x,[]]));
+    for(const food of catalog){
+      const group=foodGroup(food);
+      if(!groups.has(group)) groups.set(group,[]);
+      groups.get(group).push(food);
+    }
+
+    return order
+      .filter(group=>groups.get(group)?.length)
+      .map(group=>{
+        const options=groups.get(group)
+          .sort((a,b)=>String(a.name).localeCompare(String(b.name),undefined,{sensitivity:"base"}))
+          .map(f=>`<option value="${esc(f.id)}">${esc(f.name)}${f.personal?" ★":""}</option>`)
+          .join("");
+        return `<optgroup label="${group}">${options}</optgroup>`;
+      })
+      .join("");
+  }
+
   function updateCatalogPreview(ctx,resetQuantity=false){
     const food=selectedCatalogFood(ctx);
     const qty=document.querySelector("#catalogQty");
@@ -412,7 +444,7 @@
           <label>Food</label>
           <select id="catalogFood">
             <option value="">Select…</option>
-            ${ctx.catalog.map(f=>`<option value="${esc(f.id)}">${esc(f.name)}${f.personal?" ★":""}</option>`).join("")}
+            ${catalogOptions(ctx.catalog)}
           </select>
         </div>
         <div>
