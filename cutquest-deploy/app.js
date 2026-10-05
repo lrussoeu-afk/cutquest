@@ -12,147 +12,217 @@
 
   window.CutQuestSB = sb;
 
-  const snacks = [
-    ["Skyr protein bowl",285,39,15,6,["300 g skyr","25 g whey","10 g almonds"],13],
-    ["Tuna crunch bowl",315,42,9,12,["1 can tuna","150 g cucumber","80 g avocado","mustard + herbs"],5],
-    ["Egg & cottage cheese plate",320,31,7,19,["3 eggs","150 g cottage cheese","tomatoes + herbs"],5],
-    ["Protein pudding",245,36,12,5,["250 g fromage blanc 0%","30 g whey","cocoa + sweetener"],10]
-  ];
-  const dinners = [
-    ["Steakhouse bowl",1265,106,24,79,["250 g lean beef steak","2 eggs","large green salad","100 g avocado","30 g feta"],14],
-    ["Chicken shawarma plate",1225,112,28,70,["300 g chicken thigh","Greek-style salad","150 g tzatziki","100 g avocado"],18],
-    ["Salmon power plate",1240,99,26,80,["250 g salmon","250 g courgette","2 eggs","200 g skyr herb dip"],15],
-    ["Paprika chicken & feta",1230,108,32,69,["320 g chicken breast","peppers + courgette","70 g feta","150 g Greek yogurt"],22]
-  ];
-
-  let user=null,profile=null,log=null,meals=[],history=[],weighins=[];
+  let user=null,profile=null,log=null,meals=[],history=[],weighins=[],foods=[],templates=[];
   const today=()=>new Date().toISOString().slice(0,10);
   const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]));
-
-  function showLogin(message=""){
-    user=null;
-    root.innerHTML=`
-      <main class="auth-wrap">
-        <section class="auth-card">
-          <div class="logo">CQ</div>
-          <p class="eyebrow">CUTQUEST</p>
-          <h1>Your cut,<br>remembered.</h1>
-          <p class="muted">Sign in to sync meal plans, logged food and progress.</p>
-          <input id="email" type="email" placeholder="Email" autocomplete="email">
-          <input id="password" type="password" placeholder="Password" autocomplete="current-password">
-          <div class="auth-buttons">
-            <button class="btn primary" id="signIn">Sign in</button>
-            <button class="btn ghost" id="createOwner">Create owner</button>
-          </div>
-          <div id="authMessage" class="tiny muted notice">${esc(message)}</div>
-        </section>
-      </main>`;
-    document.querySelector("#signIn").onclick=signIn;
-    document.querySelector("#createOwner").onclick=createOwner;
-  }
-
-  async function signIn(){
-    const email=document.querySelector("#email").value.trim();
-    const password=document.querySelector("#password").value;
-    const msg=document.querySelector("#authMessage");
-    msg.textContent="Signing in…";
-    const {error}=await sb.auth.signInWithPassword({email,password});
-    msg.textContent=error?error.message:"Signed in.";
-  }
-
-  async function createOwner(){
-    const email=document.querySelector("#email").value.trim();
-    const password=document.querySelector("#password").value;
-    const msg=document.querySelector("#authMessage");
-    if(!email||password.length<8){
-      msg.textContent="Use a valid email and a password of at least 8 characters.";
-      return;
-    }
-    msg.textContent="Creating owner account…";
-    try{
-      const res=await fetch(cfg.OWNER_CREATE_URL,{
-        method:"POST",
-        headers:{"content-type":"application/json"},
-        body:JSON.stringify({email,password})
-      });
-      const data=await res.json();
-      if(!res.ok){msg.textContent=data.error||"Could not create owner.";return;}
-      await signIn();
-    }catch(e){msg.textContent=e.message||"Could not create owner.";}
-  }
-
-  function mealRow(arr,type,time){
-    return {
-      user_id:user.id,daily_log_id:log.id,meal_type:type,planned_time:time,
-      name:arr[0],calories:arr[1],protein_g:arr[2],carbs_g:arr[3],fat_g:arr[4],
-      net_carbs_g:arr[6]??arr[3],ingredients:arr[5],source:"generated",completed:false
-    };
-  }
-
-  function pick(list,oldName){
-    const options=list.filter(x=>x[0]!==oldName);
-    return options[Math.floor(Math.random()*options.length)]||list[0];
-  }
-
   const round1=n=>Math.round(Number(n||0)*10)/10;
   const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 
-  function recipeList(type){
-    return type==="snack"?snacks:dinners;
+  function weightedPick(items,weightFn){
+    if(!items.length)return null;
+    const weighted=items.map(item=>({item,w:Math.max(.01,Number(weightFn(item)||.01))}));
+    const total=weighted.reduce((a,x)=>a+x.w,0);
+    let cursor=Math.random()*total;
+    for(const x of weighted){
+      cursor-=x.w;
+      if(cursor<=0)return x.item;
+    }
+    return weighted[weighted.length-1].item;
   }
 
-  function formatCount(n,unit){
-    if(unit==="egg"||unit==="eggs"){
-      const rounded=Math.max(.5,Math.round(n*2)/2);
-      const label=rounded===1?"egg":"eggs";
-      return `${rounded%1===0?rounded.toFixed(0):rounded.toFixed(1)} ${label}`;
-    }
-    if(unit==="can"||unit==="cans"){
-      const rounded=Math.max(.5,Math.round(n*2)/2);
-      const label=rounded===1?"can":"cans";
-      return `${rounded%1===0?rounded.toFixed(0):rounded.toFixed(1)} ${label}`;
-    }
-    return null;
+  function foodWeight(food){
+    const pref=Number(food.preference_score||5)+1;
+    const sat=food.saturated_fat_level==="high"?.42:food.saturated_fat_level==="medium"?.8:1;
+    return pref*pref*sat;
   }
 
-  function scaleIngredient(text,factor){
-    const g=text.match(/^([0-9]+(?:\.[0-9]+)?)\s*g\s+(.+)$/i);
-    if(g){
-      const grams=Math.max(1,Math.round(Number(g[1])*factor/5)*5);
-      return `${grams} g ${g[2]}`;
-    }
-
-    const count=text.match(/^([0-9]+(?:\.[0-9]+)?)\s+(egg|eggs|can|cans)\b\s*(.*)$/i);
-    if(count){
-      const scaled=formatCount(Number(count[1])*factor,count[2].toLowerCase());
-      return scaled+(count[3]?` ${count[3]}`:"");
-    }
-
-    if(/^large green salad$/i.test(text)){
-      if(factor<.45) return "small green salad";
-      if(factor<.8) return "medium green salad";
-      return "large green salad";
-    }
-
-    if(/salad|peppers|herbs|mustard/i.test(text)&&factor<.75){
-      return `small portion of ${text.toLowerCase()}`;
-    }
-
-    return text;
+  function hasRole(food,role){
+    return Array.isArray(food.roles)&&food.roles.includes(role);
   }
 
-  function portionRecipe(arr,kcalBudget){
-    const baseKcal=Number(arr[1]||1);
-    const factor=clamp(Number(kcalBudget||0)/baseKcal,0.05,1.35);
-    const ingredients=arr[5].map(x=>scaleIngredient(x,factor));
+  function pickFood(role,avoidIds=[]){
+    let candidates=foods.filter(f=>f.enabled!==false&&hasRole(f,role)&&!avoidIds.includes(f.id));
+    if(!candidates.length)candidates=foods.filter(f=>f.enabled!==false&&hasRole(f,role));
+    return weightedPick(candidates,foodWeight);
+  }
+
+  function chooseTemplate(type,currentId=null,forceDifferent=false){
+    let pool=templates.filter(t=>t.enabled!==false&&t.meal_type===type);
+    if(forceDifferent&&pool.length>1){
+      const changed=pool.filter(t=>t.id!==currentId);
+      if(changed.length)pool=changed;
+    }
+    return weightedPick(pool,t=>Number(t.weight||5));
+  }
+
+  function amountCandidates(food,optional=false){
+    const min=Number(food.min_portion_g);
+    const max=Number(food.max_portion_g);
+    const step=Math.max(1,Number(food.portion_step_g||5));
+    let vals=[];
+    for(let g=min;g<=max+.001;g+=step)vals.push(round1(g));
+    const def=clamp(Number(food.default_portion_g||min),min,max);
+    vals.push(round1(def));
+    vals=[...new Set(vals)].sort((a,b)=>a-b);
+    if(vals.length>9){
+      const sampled=[];
+      for(let i=0;i<9;i++) sampled.push(vals[Math.round(i*(vals.length-1)/8)]);
+      vals=[...new Set(sampled.concat([round1(def)]))].sort((a,b)=>a-b);
+    }
+    if(optional)vals.unshift(0);
+    return [...new Set(vals)];
+  }
+
+  function foodMacros(food,grams){
+    const factor=Number(grams||0)/100;
     return {
-      name:arr[0],
-      calories:Math.max(1,Math.round(baseKcal*factor)),
-      protein_g:round1(arr[2]*factor),
-      carbs_g:round1(arr[3]*factor),
-      net_carbs_g:round1((arr[6]??arr[3])*factor),
-      fat_g:round1(arr[4]*factor),
-      ingredients
+      kcal:Number(food.calories_per_100g||0)*factor,
+      p:Number(food.protein_g_per_100g||0)*factor,
+      c:Number(food.carbs_g_per_100g||0)*factor,
+      nc:Number(food.net_carbs_g_per_100g||0)*factor,
+      f:Number(food.fat_g_per_100g||0)*factor
+    };
+  }
+
+  function formatIngredient(food,grams){
+    if(Number(food.grams_per_unit)>0&&food.unit_label&&food.unit_label!=="g"){
+      const units=round1(Number(grams)/Number(food.grams_per_unit));
+      const shown=Number.isInteger(units)?String(units):units.toFixed(1);
+      const unit=food.unit_label==="egg"?(units===1?"egg":"eggs"):food.unit_label;
+      return `${shown} ${unit}`;
+    }
+    return `${Math.round(Number(grams))} g ${food.name.toLowerCase()}`;
+  }
+
+  function optimizeMeal(selected,target){
+    const choices=selected.map(x=>amountCandidates(x.food,x.optional));
+    let best=null;
+
+    function walk(i,amounts){
+      if(i===selected.length){
+        const total={kcal:0,p:0,c:0,nc:0,f:0};
+        let satPenalty=0;
+        let active=0;
+        for(let j=0;j<selected.length;j++){
+          const grams=amounts[j];
+          if(grams<=0)continue;
+          active+=1;
+          const m=foodMacros(selected[j].food,grams);
+          total.kcal+=m.kcal;total.p+=m.p;total.c+=m.c;total.nc+=m.nc;total.f+=m.f;
+          if(selected[j].food.saturated_fat_level==="high")satPenalty+=grams*.035;
+          else if(selected[j].food.saturated_fat_level==="medium")satPenalty+=grams*.008;
+        }
+        const kcalGap=Math.abs(total.kcal-target.kcal);
+        const proteinUnder=Math.max(0,target.p-total.p);
+        const proteinOver=Math.max(0,total.p-target.p);
+        const netOver=Math.max(0,total.nc-target.nc);
+        const emptyPenalty=active<2?80:0;
+        const score=kcalGap*.18+proteinUnder*6+proteinOver*.65+netOver*24+satPenalty+emptyPenalty;
+        if(!best||score<best.score)best={score,total,amounts:[...amounts]};
+        return;
+      }
+      for(const g of choices[i]){
+        amounts[i]=g;
+        walk(i+1,amounts);
+      }
+    }
+
+    walk(0,[]);
+    if(!best)return null;
+
+    const components=selected.map((x,i)=>({
+      slot:x.slot,
+      food_id:x.food.id,
+      name:x.food.name,
+      grams:Number(best.amounts[i]||0)
+    })).filter(x=>x.grams>0);
+
+    return {
+      components,
+      ingredients:components.map(comp=>{
+        const food=foods.find(f=>f.id===comp.food_id);
+        return formatIngredient(food,comp.grams);
+      }),
+      calories:Math.round(best.total.kcal),
+      protein_g:round1(best.total.p),
+      carbs_g:round1(best.total.c),
+      net_carbs_g:round1(best.total.nc),
+      fat_g:round1(best.total.f)
+    };
+  }
+
+  function simpleFoodName(name){
+    return String(name||"").replace(/,.*$/,"").replace(/\s+5%$/,"").trim();
+  }
+
+  function generatedMealName(template,components){
+    const bySlot=key=>components.find(x=>x.slot===key)?.name;
+    const protein=simpleFoodName(bySlot("protein"));
+    const veg=simpleFoodName(bySlot("veg"));
+    const base=simpleFoodName(bySlot("base"));
+    const accent=simpleFoodName(bySlot("accent"));
+
+    if(template.id==="protein_veg_bowl")return `${protein} & ${veg} bowl`;
+    if(template.id==="protein_salad")return `${protein} salad bowl`;
+    if(template.id==="fish_veg")return `${protein} with ${veg}`;
+    if(template.id==="egg_pan")return accent?`${veg} egg & ${accent} pan`:`${veg} egg pan`;
+    if(template.id==="skyr_bowl")return `${base} protein bowl`;
+    if(template.id==="savory_snack")return `${protein} snack plate`;
+    return template.name;
+  }
+
+  function rebuildSelectionFromMeal(meal,template){
+    if(!meal||!Array.isArray(meal.components)||!meal.components.length)return null;
+    const selected=[];
+    for(const slot of template.slots||[]){
+      const old=meal.components.find(c=>c.slot===slot.key);
+      if(!old){
+        if(slot.required)return null;
+        continue;
+      }
+      const food=foods.find(f=>f.id===old.food_id);
+      if(!food)return null;
+      selected.push({slot:slot.key,food,optional:!slot.required});
+    }
+    return selected.length?selected:null;
+  }
+
+  function freshSelection(template,currentMeal=null){
+    const selected=[];
+    const used=[];
+    const oldIds=Array.isArray(currentMeal?.components)?currentMeal.components.map(x=>x.food_id):[];
+    for(const slot of template.slots||[]){
+      const avoid=[...used,...oldIds];
+      const food=pickFood(slot.role,avoid)||pickFood(slot.role,used);
+      if(!food){
+        if(slot.required)return null;
+        continue;
+      }
+      selected.push({slot:slot.key,food,optional:!slot.required});
+      used.push(food.id);
+    }
+    return selected;
+  }
+
+  function buildIngredientMeal(type,target,currentMeal=null,forceNew=false){
+    let template=null,selected=null;
+    if(!forceNew&&currentMeal?.template_id){
+      template=templates.find(t=>t.id===currentMeal.template_id&&t.meal_type===type);
+      if(template)selected=rebuildSelectionFromMeal(currentMeal,template);
+    }
+    if(!template||!selected){
+      template=chooseTemplate(type,currentMeal?.template_id||null,forceNew);
+      if(!template)return null;
+      selected=freshSelection(template,currentMeal);
+    }
+    if(!selected)return null;
+
+    const fit=optimizeMeal(selected,target);
+    if(!fit)return null;
+    return {
+      ...fit,
+      template_id:template.id,
+      name:generatedMealName(template,fit.components)
     };
   }
 
@@ -167,19 +237,44 @@
     },{kcal:0,p:0,c:0,nc:0,f:0});
   }
 
-  function chooseRecipe(type,currentName,kcalBudget,proteinBudget,netBudget,forceDifferent=false){
-    let list=recipeList(type);
-    if(forceDifferent&&list.length>1) list=list.filter(x=>x[0]!==currentName);
-    let best=null;
-    for(const arr of list){
-      const scaled=portionRecipe(arr,kcalBudget);
-      const proteinGap=Math.abs(scaled.protein_g-Number(proteinBudget||0));
-      const netOver=Math.max(0,scaled.net_carbs_g-Number(netBudget||0));
-      const changePenalty=!forceDifferent&&currentName&&arr[0]!==currentName?18:0;
-      const score=proteinGap*5+netOver*10+Math.abs(scaled.calories-kcalBudget)*0.05+changePenalty;
-      if(!best||score<best.score) best={arr,scaled,score};
+  function remainingTargets(list){
+    const eaten=completedTotals(list);
+    return {
+      kcal:Math.max(0,Number(profile.calorie_target)-eaten.kcal),
+      p:Math.max(0,Number(profile.protein_target)-eaten.p),
+      nc:Math.max(0,Number(profile.net_carb_target??30)-eaten.nc)
+    };
+  }
+
+  function mealShares(pending,type){
+    const hasSnack=pending.some(m=>m.meal_type==="snack");
+    const hasDinner=pending.some(m=>m.meal_type==="dinner");
+    if(hasSnack&&hasDinner&&pending.length===2){
+      return type==="snack"
+        ? {kcal:.22,p:.30,nc:.30}
+        : {kcal:.78,p:.70,nc:.70};
     }
-    return best?.scaled||portionRecipe(recipeList(type)[0],kcalBudget);
+    return {kcal:1/pending.length,p:1/pending.length,nc:1/pending.length};
+  }
+
+  function mealRowFromFit(fit,type,time){
+    return {
+      user_id:user.id,
+      daily_log_id:log.id,
+      meal_type:type,
+      planned_time:time,
+      name:fit.name,
+      calories:fit.calories,
+      protein_g:fit.protein_g,
+      carbs_g:fit.carbs_g,
+      net_carbs_g:fit.net_carbs_g,
+      fat_g:fit.fat_g,
+      ingredients:fit.ingredients,
+      components:fit.components,
+      template_id:fit.template_id,
+      source:"generated",
+      completed:false
+    };
   }
 
   async function refitRemaining({rerollType=null,randomizeAll=false}={}){
@@ -189,36 +284,24 @@
 
     const pending=meals.filter(m=>m.source==="generated"&&!m.completed);
     if(!pending.length){
-      if(rerollType||randomizeAll) alert("Your suggested meals for today are already logged.");
+      if(rerollType||randomizeAll)alert("Your suggested meals for today are already logged.");
       await syncDay();
       return;
     }
 
-    const eaten=completedTotals(meals);
-    const remainingKcal=Math.max(0,Number(profile.calorie_target)-eaten.kcal);
-    const remainingProtein=Math.max(0,Number(profile.protein_target)-eaten.p);
-    const remainingNet=Math.max(0,Number(profile.net_carb_target??30)-eaten.nc);
-
-    const hasSnack=pending.some(m=>m.meal_type==="snack");
-    const hasDinner=pending.some(m=>m.meal_type==="dinner");
+    const remain=remainingTargets(meals);
 
     for(const m of pending){
-      let kcalShare=1/pending.length,proteinShare=1/pending.length,netShare=1/pending.length;
-      if(hasSnack&&hasDinner&&pending.length===2){
-        if(m.meal_type==="snack"){
-          kcalShare=.22; proteinShare=.30; netShare=.30;
-        }else{
-          kcalShare=.78; proteinShare=.70; netShare=.70;
-        }
-      }
-      const fit=chooseRecipe(
-        m.meal_type,
-        m.name,
-        Math.max(1,remainingKcal*kcalShare),
-        remainingProtein*proteinShare,
-        remainingNet*netShare,
-        randomizeAll||rerollType===m.meal_type
-      );
+      const share=mealShares(pending,m.meal_type);
+      const target={
+        kcal:Math.max(1,remain.kcal*share.kcal),
+        p:Math.max(0,remain.p*share.p),
+        nc:Math.max(0,remain.nc*share.nc)
+      };
+      const forceNew=randomizeAll||rerollType===m.meal_type;
+      const fit=buildIngredientMeal(m.meal_type,target,m,forceNew);
+      if(!fit)continue;
+
       const r=await sb.from("meals").update({
         name:fit.name,
         calories:fit.calories,
@@ -226,7 +309,9 @@
         carbs_g:fit.carbs_g,
         net_carbs_g:fit.net_carbs_g,
         fat_g:fit.fat_g,
-        ingredients:fit.ingredients
+        ingredients:fit.ingredients,
+        components:fit.components,
+        template_id:fit.template_id
       }).eq("id",m.id).eq("user_id",user.id).select().single();
       if(r.error)return alert(r.error.message);
     }
