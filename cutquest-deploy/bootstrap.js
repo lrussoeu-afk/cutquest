@@ -83,8 +83,8 @@
     try {
       if (!window.CUTQUEST_CONFIG) throw new Error("Missing CutQuest configuration.");
       await loadSupabase();
-      await loadScript("./app.js?v=16", 5000);
-      await loadScript("./manual-log.js?v=16", 5000);
+      await loadScript("./app.js?v=17", 5000);
+      await loadScript("./manual-log.js?v=17", 5000);
     } catch (err) {
       showBootError(err?.message || "The app could not finish loading.");
     }
