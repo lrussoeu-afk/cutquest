@@ -133,7 +133,8 @@
       mealRow(dinner,"dinner",profile.eating_window_end||"17:45")
     ]).select();
     if(r.error)return alert(r.error.message);
-    meals=r.data||[];
+    const refreshed=await sb.from("meals").select("*").eq("daily_log_id",log.id).order("created_at");
+    meals=refreshed.data||r.data||[];
     await syncDay();
   }
 
