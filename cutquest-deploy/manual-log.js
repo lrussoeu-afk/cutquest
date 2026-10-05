@@ -14,8 +14,8 @@
     .catalog-preview{min-height:42px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line);border-radius:10px}
     .manual-divider{height:1px;background:var(--line);margin:16px 0}
     .record-check{display:flex;gap:7px;align-items:center;margin:0;padding:0 4px 10px;color:#aeb6b8;font-size:11px;white-space:nowrap}.record-check input{width:auto}.icon-add{min-width:42px;font-size:20px;line-height:1}.form-msg{min-height:12px;margin-top:6px}.manual-list{margin-top:12px;border-top:1px solid var(--line)}
-    .manual-row{display:grid;grid-template-columns:1.5fr repeat(5,.6fr) auto;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #242a2c}
-    .manual-row .btn{padding:7px 9px}
+    .manual-row{display:grid;grid-template-columns:minmax(150px,1.5fr) repeat(5,.7fr) auto;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #242a2c}
+    .manual-row .btn{padding:7px 9px}.icon-delete{width:34px;height:34px;padding:0!important;font-size:18px;display:grid;place-items:center}
     @media(max-width:720px){
       .manual-head{align-items:flex-start;flex-direction:column}
       .manual-grid{grid-template-columns:1fr 1fr 1fr}
@@ -25,7 +25,7 @@
       .catalog-grid .catalog-preview{grid-column:1/-1}
       .catalog-grid .btn{grid-column:1/-1}
       .manual-row{grid-template-columns:1.4fr .7fr .7fr}
-      .manual-row span:nth-child(5),.manual-row span:nth-child(6){display:none}
+      .manual-row span:nth-child(4),.manual-row span:nth-child(5),.manual-row span:nth-child(6){display:none}
     }
   `;
   document.head.appendChild(style);
@@ -318,16 +318,16 @@
   }
 
   function manualRows(ctx){
-    if(!ctx.manuals.length) return '<p class="tiny muted" style="margin:10px 0 0">Nothing logged manually yet.</p>';
+    if(!ctx.manuals.length) return '';
     return '<div class="manual-list">'+ctx.manuals.map(m=>`
       <div class="manual-row">
         <strong>${esc(m.name)}</strong>
         <span>${Math.round(Number(m.calories||0))} kcal</span>
         <span>${Math.round(Number(m.protein_g||0))}g P</span>
         <span>${Math.round(Number(m.net_carbs_g??m.carbs_g??0))}g net C</span>
-        <span>${Math.round(Number(m.carbs_g||0))}g total C</span>
+        <span>${Math.round(Number(m.fiber_g||0))}g fiber</span>
         <span>${Math.round(Number(m.fat_g||0))}g F</span>
-        <button class="btn ghost" data-manual-delete="${esc(m.id)}">Delete</button>
+        <button class="btn ghost icon-delete" aria-label="Delete" title="Delete" data-manual-delete="${esc(m.id)}">×</button>
       </div>`).join("")+'</div>';
   }
 
@@ -373,7 +373,7 @@
         <div><label>Fat</label><input id="manualFat" type="number" min="0" step=".1"></div>
         <label class="record-check" title="Keep this food in your list">
           <input id="manualRecord" type="checkbox" checked>
-          <span>Save</span>
+          <span>Record</span>
         </label>
         <button id="manualAdd" class="btn primary icon-add" aria-label="Add" title="Add">+</button>
       </div>
