@@ -9,6 +9,9 @@
     .manual-box{margin:12px 0 14px}
     .manual-head{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:12px}
     .manual-grid{display:grid;grid-template-columns:2fr repeat(5,.7fr) auto;gap:8px;align-items:end}
+    .catalog-grid{display:grid;grid-template-columns:minmax(220px,2fr) .7fr minmax(220px,1.5fr) auto;gap:8px;align-items:end}
+    .catalog-preview{min-height:42px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line);border-radius:10px}
+    .manual-divider{height:1px;background:var(--line);margin:16px 0}
     .manual-list{margin-top:12px;border-top:1px solid var(--line)}
     .manual-row{display:grid;grid-template-columns:1.5fr repeat(5,.6fr) auto;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #242a2c}
     .manual-row .btn{padding:7px 9px}
@@ -17,6 +20,10 @@
       .manual-grid{grid-template-columns:1fr 1fr}
       .manual-grid .manual-name{grid-column:1/-1}
       .manual-grid .btn{grid-column:1/-1}
+      .catalog-grid{grid-template-columns:1fr 1fr}
+      .catalog-grid .catalog-food{grid-column:1/-1}
+      .catalog-grid .catalog-preview{grid-column:1/-1}
+      .catalog-grid .btn{grid-column:1/-1}
       .manual-row{grid-template-columns:1.4fr .7fr .7fr}
       .manual-row span:nth-child(5),.manual-row span:nth-child(6){display:none}
     }
@@ -44,12 +51,20 @@
       .eq("log_date",today())
       .maybeSingle();
     if(error || !log) return null;
-    const {data:manuals} = await client.from("meals")
-      .select("*")
-      .eq("daily_log_id",log.id)
-      .eq("source","manual")
-      .order("created_at",{ascending:false});
-    return {client,user,log,manuals:manuals||[]};
+    const [{data:manuals},{data:catalog,error:catalogError}] = await Promise.all([
+      client.from("meals")
+        .select("*")
+        .eq("daily_log_id",log.id)
+        .eq("source","manual")
+        .order("created_at",{ascending:false}),
+      client.from("food_items")
+        .select("*")
+        .eq("enabled",true)
+        .order("preference_score",{ascending:false})
+        .order("name",{ascending:true})
+    ]);
+    if(catalogError) return null;
+    return {client,user,log,manuals:manuals||[],catalog:catalog||[]};
   }
 
   async function recalc(ctx){
@@ -85,6 +100,91 @@
       updated_at:new Date().toISOString()
     }).eq("id",log.id).eq("user_id",user.id);
     if(updateError) throw updateError;
+  }
+
+  const round1 = n => Math.round(Number(n||0)*10)/10;
+
+  function catalogMacros(food,grams){
+    const factor=Number(grams||0)/100;
+    return {
+      calories:Number(food.calories_per_100g||0)*factor,
+      protein:Number(food.protein_g_per_100g||0)*factor,
+      carbs:Number(food.carbs_g_per_100g||0)*factor,
+      netCarbs:Number(food.net_carbs_g_per_100g||0)*factor,
+      fat:Number(food.fat_g_per_100g||0)*factor
+    };
+  }
+
+  function rememberedQuantity(food){
+    const stored=Number(localStorage.getItem(`cutquest:lastqty:${food.id}`));
+    return stored>0 ? stored : Number(food.default_portion_g||100);
+  }
+
+  function selectedCatalogFood(ctx){
+    const id=document.querySelector("#catalogFood")?.value;
+    return ctx.catalog.find(f=>f.id===id)||null;
+  }
+
+  function updateCatalogPreview(ctx,resetQuantity=false){
+    const food=selectedCatalogFood(ctx);
+    const qty=document.querySelector("#catalogQty");
+    const preview=document.querySelector("#catalogPreview");
+    const button=document.querySelector("#catalogAdd");
+    if(!food){
+      if(preview)preview.textContent="Choose a food to see its macros.";
+      if(button)button.disabled=true;
+      return;
+    }
+    if(resetQuantity&&qty)qty.value=rememberedQuantity(food);
+    const grams=Number(qty?.value||0);
+    if(!grams||grams<=0){
+      if(preview)preview.textContent="Enter a quantity.";
+      if(button)button.disabled=true;
+      return;
+    }
+    const m=catalogMacros(food,grams);
+    if(preview)preview.textContent=`${Math.round(m.calories)} kcal · ${round1(m.protein)}g P · ${round1(m.netCarbs)}g net C · ${round1(m.fat)}g F`;
+    if(button)button.disabled=false;
+  }
+
+  async function addCatalogFood(ctx){
+    const food=selectedCatalogFood(ctx);
+    const grams=Number(document.querySelector("#catalogQty")?.value||0);
+    const msg=document.querySelector("#catalogMsg");
+    if(!food||!grams||grams<=0){
+      if(msg)msg.textContent="Choose a food and quantity.";
+      return;
+    }
+
+    const m=catalogMacros(food,grams);
+    if(msg)msg.textContent="Logging…";
+    const {error}=await ctx.client.from("meals").insert({
+      user_id:ctx.user.id,
+      daily_log_id:ctx.log.id,
+      meal_type:"meal",
+      planned_time:null,
+      eaten_at:new Date().toISOString(),
+      name:`${food.name} · ${round1(grams)} g`,
+      calories:round1(m.calories),
+      protein_g:round1(m.protein),
+      carbs_g:round1(m.carbs),
+      net_carbs_g:round1(m.netCarbs),
+      fat_g:round1(m.fat),
+      ingredients:[`${round1(grams)} g ${food.name.toLowerCase()}`],
+      components:[{slot:"logged",food_id:food.id,name:food.name,grams:round1(grams)}],
+      source:"manual",
+      completed:true
+    });
+
+    if(error){
+      if(msg)msg.textContent=error.message;
+      return;
+    }
+
+    localStorage.setItem(`cutquest:lastqty:${food.id}`,String(grams));
+    await recalc(ctx);
+    if(window.CutQuestRefitPlan) await window.CutQuestRefitPlan();
+    else location.reload();
   }
 
   async function addFood(ctx){
@@ -200,10 +300,36 @@
     box.innerHTML = `
       <div class="manual-head">
         <div>
-          <p class="eyebrow">MANUAL FOOD LOG</p>
-          <strong>Add anything you actually ate</strong>
+          <p class="eyebrow">QUICK FOOD LOG</p>
+          <strong>Pick from your CutQuest food catalogue</strong>
         </div>
-        <span class="tiny muted">Net carbs are the keto number. On EU labels, “carbs” is usually already close to net carbs; total carbs is optional.</span>
+        <span class="tiny muted">Choose the food and quantity. CutQuest does the macro maths.</span>
+      </div>
+      <div class="catalog-grid">
+        <div class="catalog-food">
+          <label>Food</label>
+          <select id="catalogFood">
+            <option value="">Select a food…</option>
+            ${ctx.catalog.map(f=>`<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label>Quantity g</label>
+          <input id="catalogQty" type="number" min="1" step="1" placeholder="250">
+        </div>
+        <div id="catalogPreview" class="catalog-preview tiny muted">Choose a food to see its macros.</div>
+        <button id="catalogAdd" class="btn primary" disabled>+ Log food</button>
+      </div>
+      <div id="catalogMsg" class="tiny muted" style="margin-top:8px"></div>
+
+      <div class="manual-divider"></div>
+
+      <div class="manual-head">
+        <div>
+          <p class="eyebrow">CUSTOM FOOD LOG</p>
+          <strong>Or enter something that isn't in the catalogue</strong>
+        </div>
+        <span class="tiny muted">Net carbs are the keto number. Total carbs is optional.</span>
       </div>
       <div class="manual-grid">
         <div class="manual-name"><label>Food / meal</label><input id="manualName" placeholder="e.g. 2 eggs + butter"></div>
@@ -219,6 +345,9 @@
     `;
 
     mealGrid.parentNode.insertBefore(box,mealGrid);
+    box.querySelector("#catalogFood").onchange = () => updateCatalogPreview(ctx,true);
+    box.querySelector("#catalogQty").oninput = () => updateCatalogPreview(ctx,false);
+    box.querySelector("#catalogAdd").onclick = () => addCatalogFood(ctx);
     box.querySelector("#manualAdd").onclick = () => addFood(ctx);
     box.querySelectorAll("[data-manual-delete]").forEach(btn=>{
       const m = ctx.manuals.find(x=>x.id===btn.dataset.manualDelete);
