@@ -152,6 +152,7 @@
     const pending=meals.filter(m=>m.source==="generated"&&!m.completed);
     if(!pending.length){
       if(rerollType||randomizeAll) alert("Your suggested meals for today are already logged.");
+      await syncDay();
       return;
     }
 
