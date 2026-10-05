@@ -519,6 +519,8 @@
     }).eq("id",log.id).select().single();
     if(lr.data)log=lr.data;
     settingsOpen=false;
+    const panel=document.querySelector("#settingsPanel");
+    if(panel)panel.style.display="none";
     render();
   }
 
@@ -567,7 +569,7 @@
           </div>
         </header>
 
-        <section id="settingsPanel" class="settings card ${settingsOpen?"":"hidden"}">
+        <section id="settingsPanel" class="settings card ${settingsOpen?"":"hidden"}" style="${settingsOpen?"":"display:none"}">
           <div><label>Calories</label><input id="calorieTarget" type="number" value="${Number(profile.calorie_target)}"></div>
           <div><label>Protein g</label><input id="proteinTarget" type="number" value="${Number(profile.protein_target)}"></div>
           <div><label>Net carbs g</label><input id="netCarbTarget" type="number" value="${Number(profile.net_carb_target??30)}"></div>
