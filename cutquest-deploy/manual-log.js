@@ -8,13 +8,13 @@
   style.textContent = `
     .manual-box{margin:12px 0 14px}
     .manual-head{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:12px}
-    .manual-grid{display:grid;grid-template-columns:minmax(170px,1.7fr) repeat(6,.65fr) auto auto;gap:8px;align-items:end}
+    .manual-grid{display:grid;grid-template-columns:minmax(170px,1.7fr) repeat(7,.72fr) auto auto;gap:8px;align-items:end}
     .catalog-grid{display:grid;grid-template-columns:minmax(220px,2fr) .7fr minmax(220px,1.5fr) auto;gap:8px;align-items:end}
     .catalog-grid select{width:100%;background:#0e1011;color:#fff;border:1px solid #303638;border-radius:9px;padding:11px;font:inherit}
     .catalog-preview{min-height:42px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line);border-radius:10px}
     .manual-divider{height:1px;background:var(--line);margin:16px 0}
     .record-check{display:flex;gap:7px;align-items:center;margin:0;padding:0 4px 10px;color:#aeb6b8;font-size:11px;white-space:nowrap}.record-check input{width:auto}.icon-add{min-width:42px;font-size:20px;line-height:1}.form-msg{min-height:12px;margin-top:6px}.manual-list{margin-top:12px;border-top:1px solid var(--line)}
-    .manual-row{display:grid;grid-template-columns:minmax(150px,1.5fr) repeat(5,.7fr) auto;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #242a2c}
+    .manual-row{display:grid;grid-template-columns:minmax(150px,1.5fr) repeat(6,.72fr) auto;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #242a2c}
     .manual-row .btn{padding:7px 9px}.icon-delete{width:34px;height:34px;padding:0!important;font-size:18px;display:grid;place-items:center}
     @media(max-width:720px){
       .manual-head{align-items:flex-start;flex-direction:column}
@@ -25,7 +25,7 @@
       .catalog-grid .catalog-preview{grid-column:1/-1}
       .catalog-grid .btn{grid-column:1/-1}
       .manual-row{grid-template-columns:1.4fr .7fr .7fr}
-      .manual-row span:nth-child(4),.manual-row span:nth-child(5),.manual-row span:nth-child(6){display:none}
+      .manual-row span:nth-child(4),.manual-row span:nth-child(5),.manual-row span:nth-child(6),.manual-row span:nth-child(7){display:none}
     }
   `;
   document.head.appendChild(style);
@@ -202,14 +202,15 @@
     const qty = Number(document.querySelector("#manualQty")?.value || 0);
     const caloriesRaw = document.querySelector("#manualCalories")?.value ?? "";
     const proteinRaw = document.querySelector("#manualProtein")?.value ?? "";
+    const carbsRaw = document.querySelector("#manualCarbs")?.value ?? "";
     const netRaw = document.querySelector("#manualNetCarbs")?.value ?? "";
     const fiberRaw = document.querySelector("#manualFiber")?.value ?? "";
     const fatRaw = document.querySelector("#manualFat")?.value ?? "";
     const calories = Number(caloriesRaw);
     const protein = Number(proteinRaw || 0);
+    const totalCarbs = Number(carbsRaw || 0);
     const netCarbs = Number(netRaw || 0);
     const fiber = Number(fiberRaw || 0);
-    const totalCarbs = Math.max(0, netCarbs + fiber);
     const fat = Number(fatRaw || 0);
     const record = document.querySelector("#manualRecord")?.checked ?? true;
     const msg = document.querySelector("#manualMsg");
@@ -220,7 +221,7 @@
     }
 
     if(record){
-      const complete = qty>0 && [caloriesRaw,proteinRaw,netRaw,fiberRaw,fatRaw].every(v=>String(v).trim()!=="");
+      const complete = qty>0 && [caloriesRaw,proteinRaw,carbsRaw,netRaw,fiberRaw,fatRaw].every(v=>String(v).trim()!=="");
       if(!complete){
         if(msg) msg.textContent = "To save this food, add quantity and all macros.";
         return;
@@ -322,11 +323,12 @@
     return '<div class="manual-list">'+ctx.manuals.map(m=>`
       <div class="manual-row">
         <strong>${esc(m.name)}</strong>
-        <span>${Math.round(Number(m.calories||0))} kcal</span>
-        <span>${Math.round(Number(m.protein_g||0))}g P</span>
-        <span>${Math.round(Number(m.net_carbs_g??m.carbs_g??0))}g net C</span>
-        <span>${Math.round(Number(m.fiber_g||0))}g fiber</span>
-        <span>${Math.round(Number(m.fat_g||0))}g F</span>
+        <span>${Math.round(Number(m.calories||0))}</span>
+        <span>${Math.round(Number(m.protein_g||0))}</span>
+        <span>${Math.round(Number(m.carbs_g||0))}</span>
+        <span>${Math.round(Number(m.net_carbs_g??m.carbs_g??0))}</span>
+        <span>${Math.round(Number(m.fiber_g||0))}</span>
+        <span>${Math.round(Number(m.fat_g||0))}</span>
         <button class="btn ghost icon-delete" aria-label="Delete" title="Delete" data-manual-delete="${esc(m.id)}">×</button>
       </div>`).join("")+'</div>';
   }
@@ -367,8 +369,9 @@
         <div class="manual-name"><label>Custom</label><input id="manualName" placeholder="Food"></div>
         <div><label>g</label><input id="manualQty" type="number" min="1" step="1" placeholder="100"></div>
         <div><label>kcal</label><input id="manualCalories" type="number" min="0" step="1"></div>
-        <div><label>P</label><input id="manualProtein" type="number" min="0" step=".1"></div>
-        <div><label>Net C</label><input id="manualNetCarbs" type="number" min="0" step=".1"></div>
+        <div><label>Protein</label><input id="manualProtein" type="number" min="0" step=".1"></div>
+        <div><label>Carbs</label><input id="manualCarbs" type="number" min="0" step=".1"></div>
+        <div><label>Net Carbs</label><input id="manualNetCarbs" type="number" min="0" step=".1"></div>
         <div><label>Fiber</label><input id="manualFiber" type="number" min="0" step=".1"></div>
         <div><label>Fat</label><input id="manualFat" type="number" min="0" step=".1"></div>
         <label class="record-check" title="Keep this food in your list">
