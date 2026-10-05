@@ -333,6 +333,16 @@
     }
     profile=r.data;
 
+    const [foodResult,templateResult]=await Promise.all([
+      sb.from("food_items").select("*").eq("enabled",true).order("preference_score",{ascending:false}),
+      sb.from("meal_templates").select("*").eq("enabled",true).order("weight",{ascending:false})
+    ]);
+    if(foodResult.error)return showLogin("Could not load food catalogue: "+foodResult.error.message);
+    if(templateResult.error)return showLogin("Could not load meal templates: "+templateResult.error.message);
+    foods=foodResult.data||[];
+    templates=templateResult.data||[];
+    if(!foods.length||!templates.length)return showLogin("The CutQuest food engine is empty.");
+
     r=await sb.from("daily_logs").select("*").eq("user_id",u.id).eq("log_date",today()).maybeSingle();
     if(!r.data){
       r=await sb.from("daily_logs").insert({
@@ -346,7 +356,21 @@
 
     r=await sb.from("meals").select("*").eq("daily_log_id",log.id).order("created_at");
     meals=r.data||[];
-    if(!meals.some(x=>x.source==="generated"))await generate(false);
+
+    if(!meals.some(x=>x.source==="generated")){
+      await generate(false);
+      return;
+    }
+
+    const needsUpgrade=meals.some(m=>
+      m.source==="generated"&&!m.completed&&
+      (!m.template_id||!Array.isArray(m.components)||!m.components.length)
+    );
+    if(needsUpgrade){
+      await refitRemaining({});
+      return;
+    }
+
     await loadHistory();
     await updateProgress();
     render();
@@ -359,15 +383,33 @@
 
     const generated=meals.filter(x=>x.source==="generated");
     if(!generated.length){
-      const s=pick(snacks,null);
-      const d=pick(dinners,null);
-      const r=await sb.from("meals").insert([
-        mealRow(s,"snack",profile.eating_window_start||"16:00"),
-        mealRow(d,"dinner",profile.eating_window_end||"17:45")
-      ]).select();
-      if(r.error)return alert(r.error.message);
-      meals=[...meals,...(r.data||[])];
+      const pending=[{meal_type:"snack"},{meal_type:"dinner"}];
+      const remain=remainingTargets(meals);
+      const rows=[];
+
+      for(const item of pending){
+        const share=mealShares(pending,item.meal_type);
+        const target={
+          kcal:Math.max(1,remain.kcal*share.kcal),
+          p:Math.max(0,remain.p*share.p),
+          nc:Math.max(0,remain.nc*share.nc)
+        };
+        const fit=buildIngredientMeal(item.meal_type,target,null,true);
+        if(!fit)continue;
+        const time=item.meal_type==="snack"
+          ? (profile.eating_window_start||"16:00")
+          : (profile.eating_window_end||"17:45");
+        rows.push(mealRowFromFit(fit,item.meal_type,time));
+      }
+
+      if(!rows.length)return alert("CutQuest could not assemble a meal from the food catalogue.");
+      const inserted=await sb.from("meals").insert(rows).select();
+      if(inserted.error)return alert(inserted.error.message);
+      meals=[...meals,...(inserted.data||[])];
+      await syncDay();
+      return;
     }
+
     await refitRemaining({randomizeAll:ask});
   }
 
