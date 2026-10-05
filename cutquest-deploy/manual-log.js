@@ -178,7 +178,7 @@
         <strong>${esc(m.name)}</strong>
         <span>${Math.round(Number(m.calories||0))} kcal</span>
         <span>${Math.round(Number(m.protein_g||0))}g P</span>
-        <span>${Math.round(Number(m.net_carbs_g??m.carbs_g||0))}g net C</span>
+        <span>${Math.round(Number(m.net_carbs_g??m.carbs_g??0))}g net C</span>
         <span>${Math.round(Number(m.carbs_g||0))}g total C</span>
         <span>${Math.round(Number(m.fat_g||0))}g F</span>
         <button class="btn ghost" data-manual-delete="${esc(m.id)}">Delete</button>
