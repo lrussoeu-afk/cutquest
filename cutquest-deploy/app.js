@@ -80,6 +80,7 @@
       p:Number(food.protein_g_per_100g||0)*factor,
       c:Number(food.carbs_g_per_100g||0)*factor,
       nc:Number(food.net_carbs_g_per_100g||0)*factor,
+      fiber:Number(food.fiber_g_per_100g||0)*factor,
       f:Number(food.fat_g_per_100g||0)*factor
     };
   }
@@ -100,7 +101,7 @@
 
     function walk(i,amounts){
       if(i===selected.length){
-        const total={kcal:0,p:0,c:0,nc:0,f:0};
+        const total={kcal:0,p:0,c:0,nc:0,fiber:0,f:0};
         let satPenalty=0;
         let active=0;
         for(let j=0;j<selected.length;j++){
@@ -108,7 +109,7 @@
           if(grams<=0)continue;
           active+=1;
           const m=foodMacros(selected[j].food,grams);
-          total.kcal+=m.kcal;total.p+=m.p;total.c+=m.c;total.nc+=m.nc;total.f+=m.f;
+          total.kcal+=m.kcal;total.p+=m.p;total.c+=m.c;total.nc+=m.nc;total.fiber+=m.fiber;total.f+=m.f;
           if(selected[j].food.saturated_fat_level==="high")satPenalty+=grams*.035;
           else if(selected[j].food.saturated_fat_level==="medium")satPenalty+=grams*.008;
         }
@@ -147,6 +148,7 @@
       protein_g:round1(best.total.p),
       carbs_g:round1(best.total.c),
       net_carbs_g:round1(best.total.nc),
+      fiber_g:round1(best.total.fiber),
       fat_g:round1(best.total.f)
     };
   }
@@ -232,9 +234,10 @@
       a.p+=Number(m.protein_g||0);
       a.c+=Number(m.carbs_g||0);
       a.nc+=Number(m.net_carbs_g??m.carbs_g??0);
+      a.fiber+=Number(m.fiber_g||0);
       a.f+=Number(m.fat_g||0);
       return a;
-    },{kcal:0,p:0,c:0,nc:0,f:0});
+    },{kcal:0,p:0,c:0,nc:0,fiber:0,f:0});
   }
 
   function remainingTargets(list){
@@ -268,6 +271,7 @@
       protein_g:fit.protein_g,
       carbs_g:fit.carbs_g,
       net_carbs_g:fit.net_carbs_g,
+      fiber_g:fit.fiber_g,
       fat_g:fit.fat_g,
       ingredients:fit.ingredients,
       components:fit.components,
@@ -348,7 +352,7 @@
       r=await sb.from("daily_logs").insert({
         user_id:u.id,log_date:today(),
         calorie_target:profile.calorie_target,protein_target:profile.protein_target,
-        net_carb_target:profile.net_carb_target??30
+        net_carb_target:profile.net_carb_target??30,fiber_target:profile.fiber_target??30
       }).select().single();
     }
     if(r.error)return showLogin(r.error.message);
@@ -417,8 +421,8 @@
     return meals.filter(m=>!doneOnly||m.completed).reduce((a,m)=>{
       a.kcal+=Number(m.calories||0);a.p+=Number(m.protein_g||0);
       a.c+=Number(m.carbs_g||0);a.nc+=Number(m.net_carbs_g??m.carbs_g??0);
-      a.f+=Number(m.fat_g||0);return a;
-    },{kcal:0,p:0,c:0,nc:0,f:0});
+      a.fiber+=Number(m.fiber_g||0);a.f+=Number(m.fat_g||0);return a;
+    },{kcal:0,p:0,c:0,nc:0,fiber:0,f:0});
   }
 
   async function syncDay(){
@@ -428,7 +432,7 @@
     const logged=missionMeals.filter(x=>x.completed).length;
     const xp=logged*25+(completed?50:0);
     const r=await sb.from("daily_logs").update({
-      calories:t.kcal,protein_g:t.p,carbs_g:t.c,net_carbs_g:t.nc,fat_g:t.f,
+      calories:t.kcal,protein_g:t.p,carbs_g:t.c,net_carbs_g:t.nc,fiber_g:t.fiber,fat_g:t.f,
       completed,xp_earned:xp,updated_at:new Date().toISOString()
     }).eq("id",log.id).select().single();
     if(r.data)log=r.data;
@@ -502,17 +506,19 @@
     const snackTime=document.querySelector("#snackTime").value;
     const dinnerTime=document.querySelector("#dinnerTime").value;
     const netCarbs=Number(document.querySelector("#netCarbTarget").value);
+    const fiber=Number(document.querySelector("#fiberTarget").value);
     const r=await sb.from("profiles").update({
-      calorie_target:calories,protein_target:protein,net_carb_target:netCarbs,
+      calorie_target:calories,protein_target:protein,net_carb_target:netCarbs,fiber_target:fiber,
       eating_window_start:snackTime,eating_window_end:dinnerTime,
       updated_at:new Date().toISOString()
     }).eq("id",user.id).select().single();
     if(r.error)return alert(r.error.message);
     profile=r.data;
     const lr=await sb.from("daily_logs").update({
-      calorie_target:calories,protein_target:protein,net_carb_target:netCarbs,updated_at:new Date().toISOString()
+      calorie_target:calories,protein_target:protein,net_carb_target:netCarbs,fiber_target:fiber,updated_at:new Date().toISOString()
     }).eq("id",log.id).select().single();
     if(lr.data)log=lr.data;
+    settingsOpen=false;
     render();
   }
 
