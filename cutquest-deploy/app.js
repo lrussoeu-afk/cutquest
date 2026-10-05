@@ -10,7 +10,7 @@
     auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}
   });
 
-  const snacks = [
+  window.CutQuestSB = sb;\n\n  const snacks = [
     ["Skyr protein bowl",285,39,15,6,["300 g skyr","25 g whey","10 g almonds"]],
     ["Tuna crunch bowl",315,42,9,12,["1 can tuna","150 g cucumber","80 g avocado","mustard + herbs"]],
     ["Egg & cottage cheese plate",320,31,7,19,["3 eggs","150 g cottage cheese","tomatoes + herbs"]],
