@@ -327,6 +327,62 @@
 
   window.CutQuestRefitPlan=()=>refitRemaining({});
 
+  function showResetPassword(message=""){
+    root.innerHTML=`
+      <main class="auth-wrap">
+        <div class="auth-card">
+          <div class="logo">CQ</div>
+          <p class="eyebrow">CUTQUEST</p>
+          <h1>Set a new password.</h1>
+          <div class="form-grid">
+            <div>
+              <label>New password</label>
+              <input id="resetPassword" type="password" autocomplete="new-password">
+            </div>
+            <div>
+              <label>Confirm password</label>
+              <input id="resetPassword2" type="password" autocomplete="new-password">
+            </div>
+          </div>
+          <p id="resetMsg" class="tiny muted">${esc(message)}</p>
+          <button id="resetSave" class="btn primary full">Save new password</button>
+        </div>
+      </main>`;
+
+    const p1=document.querySelector("#resetPassword");
+    const p2=document.querySelector("#resetPassword2");
+    const msg=document.querySelector("#resetMsg");
+    const save=document.querySelector("#resetSave");
+
+    async function doReset(){
+      const a=p1.value;
+      const b=p2.value;
+      if(!a||a.length<8){
+        msg.textContent="Use at least 8 characters.";
+        return;
+      }
+      if(a!==b){
+        msg.textContent="Passwords do not match.";
+        return;
+      }
+      save.disabled=true;
+      msg.textContent="Saving…";
+      const {data,error}=await sb.auth.updateUser({password:a});
+      if(error){
+        msg.textContent=error.message;
+        save.disabled=false;
+        return;
+      }
+      history.replaceState(null,"",location.pathname);
+      msg.textContent="Password updated.";
+      if(data.user) await enter(data.user);
+      else showLogin("Password updated. Sign in with your new password.");
+    }
+
+    save.onclick=doReset;
+    p2.addEventListener("keydown",e=>{if(e.key==="Enter")doReset();});
+  }
+
   function showLogin(message=""){
     user=null;
     root.innerHTML=`
@@ -347,7 +403,7 @@
           </div>
           <p id="authMsg" class="tiny muted">${esc(message)}</p>
           <button id="authSignIn" class="btn primary full">Sign in</button>
-          <button id="authCreate" class="btn ghost full" style="margin-top:8px">Create owner account</button>
+          <button id="authForgot" class="btn ghost full" style="margin-top:8px">Forgot password?</button>
         </div>
       </main>`;
 
@@ -355,7 +411,7 @@
     const password=document.querySelector("#authPassword");
     const msg=document.querySelector("#authMsg");
     const signIn=document.querySelector("#authSignIn");
-    const create=document.querySelector("#authCreate");
+    const forgot=document.querySelector("#authForgot");
 
     async function doSignIn(){
       const e=email.value.trim();
@@ -365,45 +421,41 @@
         return;
       }
       signIn.disabled=true;
-      create.disabled=true;
+      forgot.disabled=true;
       msg.textContent="Signing in…";
       const {error}=await sb.auth.signInWithPassword({email:e,password:p});
       if(error){
         msg.textContent=error.message;
         signIn.disabled=false;
-        create.disabled=false;
+        forgot.disabled=false;
       }
     }
 
-    async function doCreate(){
+    async function doForgot(){
       const e=email.value.trim();
-      const p=password.value;
-      if(!e||!p){
-        msg.textContent="Enter an email and password.";
+      if(!e){
+        msg.textContent="Enter your email first.";
+        email.focus();
         return;
       }
+      forgot.disabled=true;
       signIn.disabled=true;
-      create.disabled=true;
-      msg.textContent="Creating account…";
-      try{
-        const res=await fetch(cfg.OWNER_CREATE_URL,{
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({email:e,password:p})
-        });
-        const body=await res.json().catch(()=>({}));
-        if(!res.ok) throw new Error(body.error||body.message||"Could not create account.");
-        const {error}=await sb.auth.signInWithPassword({email:e,password:p});
-        if(error) throw error;
-      }catch(err){
-        msg.textContent=err.message||"Could not create account.";
+      msg.textContent="Sending reset email…";
+      const redirectTo=location.origin+location.pathname;
+      const {error}=await sb.auth.resetPasswordForEmail(e,{redirectTo});
+      if(error){
+        msg.textContent=error.message;
+        forgot.disabled=false;
         signIn.disabled=false;
-        create.disabled=false;
+        return;
       }
+      msg.textContent="Reset email sent. Check your inbox.";
+      forgot.disabled=false;
+      signIn.disabled=false;
     }
 
     signIn.onclick=doSignIn;
-    create.onclick=doCreate;
+    forgot.onclick=doForgot;
     password.addEventListener("keydown",e=>{if(e.key==="Enter")doSignIn();});
   }
 
@@ -742,7 +794,11 @@
     });
   }
 
-  sb.auth.onAuthStateChange(async(_event,session)=>{
+  sb.auth.onAuthStateChange(async(event,session)=>{
+    if(event==="PASSWORD_RECOVERY"){
+      showResetPassword();
+      return;
+    }
     if(session?.user&&(!user||user.id!==session.user.id))await enter(session.user);
     if(!session)showLogin();
   });
@@ -750,6 +806,12 @@
   sb.auth.getSession()
     .then(async({data,error})=>{
       if(error)return showLogin(error.message);
+      const recoveryHash=location.hash.includes("type=recovery");
+      const recoveryQuery=new URLSearchParams(location.search).get("type")==="recovery";
+      if((recoveryHash||recoveryQuery)&&data.session?.user){
+        showResetPassword();
+        return;
+      }
       if(data.session?.user)await enter(data.session.user);
       else showLogin();
     })
