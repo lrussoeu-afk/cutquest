@@ -15,7 +15,7 @@
     .catalog-preview{min-height:42px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line);border-radius:10px}
     .manual-divider{height:1px;background:var(--line);margin:16px 0}
     .record-check{display:flex;gap:7px;align-items:center;margin:0;padding:0 4px 10px;color:#aeb6b8;font-size:11px;white-space:nowrap}.record-check input{width:auto}.icon-add{min-width:42px;font-size:20px;line-height:1}.form-msg{min-height:12px;margin-top:6px}.manual-list{margin-top:12px;border-top:1px solid var(--line)}
-    .manual-header,.manual-row{display:grid;grid-template-columns:minmax(150px,1.5fr) repeat(6,.72fr) auto;gap:8px;align-items:center}
+    .manual-header,.manual-row{display:grid;grid-template-columns:minmax(150px,1.5fr) repeat(6,.72fr) 76px;gap:8px;align-items:center}
     .manual-header{padding:0 0 8px;color:#758083;font-size:10px;text-transform:uppercase;letter-spacing:.07em}
     .manual-header span:not(:first-child),.manual-row>span{text-align:center;justify-self:center}
     .manual-row{padding:9px 0;border-bottom:1px solid #242a2c}
