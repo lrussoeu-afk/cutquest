@@ -10,6 +10,7 @@
     .manual-head{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:12px}
     .manual-grid{display:grid;grid-template-columns:2fr repeat(5,.7fr) auto;gap:8px;align-items:end}
     .catalog-grid{display:grid;grid-template-columns:minmax(220px,2fr) .7fr minmax(220px,1.5fr) auto;gap:8px;align-items:end}
+    .catalog-grid select{width:100%;background:#0e1011;color:#fff;border:1px solid #303638;border-radius:9px;padding:11px;font:inherit}
     .catalog-preview{min-height:42px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line);border-radius:10px}
     .manual-divider{height:1px;background:var(--line);margin:16px 0}
     .manual-list{margin-top:12px;border-top:1px solid var(--line)}
