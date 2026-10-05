@@ -1,4 +1,4 @@
-const CACHE="cutquest-v17";
+const CACHE="cutquest-v18";
 const ASSETS=["./","./index.html","./styles.css","./config.js","./bootstrap.js","./app.js","./manual-log.js","./manifest.webmanifest"];
 
 self.addEventListener("install",e=>{
