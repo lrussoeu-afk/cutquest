@@ -562,8 +562,8 @@
             <div><div class="brand-title">CutQuest</div><div class="tiny muted">${esc(user.email)}</div></div>
           </div>
           <div class="actions">
-            <button id="settingsToggle" class="btn ghost icon-btn" aria-label="Settings" title="Settings">⚙</button>
-            <button id="signOut" class="btn ghost icon-btn" aria-label="Sign out" title="Sign out">↪</button>
+            <button id="settingsToggle" class="btn ghost icon-btn" aria-label="Settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm8.3 4.9-1.7-1a6.9 6.9 0 0 0 0-.8l1.7-1-1.6-2.8-1.9.7a7 7 0 0 0-.7-.4L15.8 6h-3.2l-.3 2.1-.7.4-1.9-.7-1.6 2.8 1.7 1a6.9 6.9 0 0 0 0 .8l-1.7 1 1.6 2.8 1.9-.7.7.4.3 2.1h3.2l.3-2.1.7-.4 1.9.7 1.6-2.8Z"/></svg></button>
+            <button id="signOut" class="btn ghost icon-btn" aria-label="Sign out" title="Sign out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3h9v2H6v14h7v2H4V3Zm11.6 4.6L20 12l-4.4 4.4-1.4-1.4 2-2H9v-2h7.2l-2-2 1.4-1.4Z"/></svg></button>
           </div>
         </header>
 
@@ -603,7 +603,7 @@
           <div class="progress-strip">
             <div>
               <div class="tiny"><b>REMAINING PLAN</b></div>
-              <strong>${Math.round(plan.kcal)} kcal · ${Math.round(plan.p)}g P · ${round1(plan.nc)}g net C</strong>
+              <strong>${Math.round(plan.kcal)} kcal · ${Math.round(plan.p)}g P · ${round1(plan.nc)}g net C · ${round1(plan.fiber)}g fiber</strong>
               <div class="tiny muted">${foods.length} ingredients · ${templates.length} meal structures</div>
             </div>
           </div>
