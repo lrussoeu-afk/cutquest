@@ -1,6 +1,7 @@
 (() => {
   const today = () => new Date().toISOString().slice(0,10);
   let editingMealId = null;
+  let editingRecipeId = null;
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
   }[c]));
@@ -21,14 +22,30 @@
     .manual-row{padding:9px 0;border-bottom:1px solid #242a2c}
     .manual-row-actions{display:flex;gap:6px;justify-content:flex-end}
     .manual-row .btn{padding:7px 9px}.icon-delete,.icon-edit{width:34px;height:34px;padding:0!important;display:grid;place-items:center}.icon-delete{font-size:18px}.icon-edit svg{width:15px;height:15px;fill:currentColor}
+    .recipe-grid{display:grid;grid-template-columns:minmax(220px,2fr) .7fr minmax(220px,1.5fr) auto;gap:8px;align-items:end}
+    .recipe-grid select,.recipe-dialog select,.recipe-dialog textarea{width:100%;background:#0e1011;color:#fff;border:1px solid #303638;border-radius:9px;padding:11px;font:inherit}
+    .recipe-preview{min-height:42px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--line);border-radius:10px}
+    .recipe-tools{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+    .recipe-modal{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:18px}
+    .recipe-dialog{width:min(760px,100%);max-height:88vh;overflow:auto;background:#141718;border:1px solid #303638;border-radius:18px;padding:18px;box-shadow:0 24px 70px rgba(0,0,0,.45)}
+    .recipe-editor-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}.recipe-editor-head h2{margin:2px 0 0;font-size:24px}
+    .recipe-meta{display:grid;grid-template-columns:2fr .7fr;gap:10px;margin-bottom:14px}
+    .recipe-ingredient{display:grid;grid-template-columns:minmax(220px,1.8fr) .6fr auto;gap:8px;align-items:end;margin-bottom:8px}
+    .recipe-ingredient .btn{height:42px}
+    .recipe-editor-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:14px}
+    .recipe-editor-preview{margin-top:12px;padding:12px;border-radius:10px;background:#101314;border:1px solid var(--line)}
+    .recipe-notes{min-height:72px;resize:vertical}
     @media(max-width:720px){
       .manual-head{align-items:flex-start;flex-direction:column}
       .manual-grid{grid-template-columns:1fr 1fr 1fr}
       .manual-grid .manual-name{grid-column:1/-1}.manual-grid .record-check{grid-column:1/3}.manual-grid .icon-add{grid-column:3}
-      .catalog-grid{grid-template-columns:1fr 1fr}
-      .catalog-grid .catalog-food{grid-column:1/-1}
-      .catalog-grid .catalog-preview{grid-column:1/-1}
-      .catalog-grid .btn{grid-column:1/-1}
+      .catalog-grid,.recipe-grid{grid-template-columns:1fr 1fr}
+      .catalog-grid .catalog-food,.recipe-grid .recipe-select{grid-column:1/-1}
+      .catalog-grid .catalog-preview,.recipe-grid .recipe-preview{grid-column:1/-1}
+      .catalog-grid .btn,.recipe-grid .btn{grid-column:1/-1}
+      .recipe-meta{grid-template-columns:1fr 1fr}
+      .recipe-ingredient{grid-template-columns:1fr 90px auto}
+      .recipe-dialog{padding:14px}
       .manual-header,.manual-row{grid-template-columns:1.4fr .7fr .7fr}
       .manual-header span:nth-child(4),.manual-header span:nth-child(5),.manual-header span:nth-child(6),.manual-header span:nth-child(7),.manual-header span:nth-child(8),
       .manual-row span:nth-child(4),.manual-row span:nth-child(5),.manual-row span:nth-child(6),.manual-row span:nth-child(7){display:none}
@@ -57,7 +74,7 @@
       .eq("log_date",today())
       .maybeSingle();
     if(error || !log) return null;
-    const [{data:manuals},{data:catalog,error:catalogError},{data:userFoods,error:userFoodsError}] = await Promise.all([
+    const [{data:manuals},{data:catalog,error:catalogError},{data:userFoods,error:userFoodsError},{data:recipes,error:recipesError}] = await Promise.all([
       client.from("meals")
         .select("*")
         .eq("daily_log_id",log.id)
@@ -72,11 +89,16 @@
         .select("*")
         .eq("user_id",user.id)
         .eq("enabled",true)
+        .order("name",{ascending:true}),
+      client.from("user_recipes")
+        .select("*")
+        .eq("user_id",user.id)
+        .eq("enabled",true)
         .order("name",{ascending:true})
     ]);
-    if(catalogError || userFoodsError) return null;
+    if(catalogError || userFoodsError || recipesError) return null;
     const saved=(userFoods||[]).map(f=>({...f,personal:true,preference_score:10}));
-    return {client,user,log,manuals:manuals||[],catalog:[...saved,...(catalog||[])]};
+    return {client,user,log,manuals:manuals||[],recipes:recipes||[],catalog:[...saved,...(catalog||[])]};
   }
 
   async function recalc(ctx){
@@ -151,7 +173,7 @@
     return "Extras";
   }
 
-  function catalogOptions(catalog){
+  function catalogOptions(catalog,selectedId=""){
     const order=["Saved","Proteins","Greens","Vegetables","Dairy","Fats","Sauces","Extras"];
     const groups=new Map(order.map(x=>[x,[]]));
     for(const food of catalog){
@@ -165,11 +187,292 @@
       .map(group=>{
         const options=groups.get(group)
           .sort((a,b)=>String(a.name).localeCompare(String(b.name),undefined,{sensitivity:"base"}))
-          .map(f=>`<option value="${esc(f.id)}">${esc(f.name)}${f.personal?" ★":""}</option>`)
+          .map(f=>`<option value="${esc(f.id)}"${f.id===selectedId?" selected":""}>${esc(f.name)}${f.personal?" ★":""}</option>`)
           .join("");
         return `<optgroup label="${group}">${options}</optgroup>`;
       })
       .join("");
+  }
+
+
+  function ingredientSnapshot(food,grams){
+    return {
+      food_id:food.id,
+      name:food.name,
+      grams:round1(grams),
+      calories_per_100g:Number(food.calories_per_100g||0),
+      protein_g_per_100g:Number(food.protein_g_per_100g||0),
+      carbs_g_per_100g:Number(food.carbs_g_per_100g||0),
+      net_carbs_g_per_100g:Number(food.net_carbs_g_per_100g||0),
+      fiber_g_per_100g:Number(food.fiber_g_per_100g||0),
+      fat_g_per_100g:Number(food.fat_g_per_100g||0)
+    };
+  }
+
+  function ingredientMacros(ingredient,grams=ingredient.grams){
+    const factor=Number(grams||0)/100;
+    return {
+      calories:Number(ingredient.calories_per_100g||0)*factor,
+      protein:Number(ingredient.protein_g_per_100g||0)*factor,
+      carbs:Number(ingredient.carbs_g_per_100g||0)*factor,
+      netCarbs:Number(ingredient.net_carbs_g_per_100g||0)*factor,
+      fiber:Number(ingredient.fiber_g_per_100g||0)*factor,
+      fat:Number(ingredient.fat_g_per_100g||0)*factor
+    };
+  }
+
+  function recipeMacros(recipe,portions=1){
+    const recipeServings=Math.max(.01,Number(recipe?.servings||1));
+    const ratio=Number(portions||0)/recipeServings;
+    return (Array.isArray(recipe?.ingredients)?recipe.ingredients:[]).reduce((sum,ingredient)=>{
+      const m=ingredientMacros(ingredient,Number(ingredient.grams||0)*ratio);
+      sum.calories+=m.calories;
+      sum.protein+=m.protein;
+      sum.carbs+=m.carbs;
+      sum.netCarbs+=m.netCarbs;
+      sum.fiber+=m.fiber;
+      sum.fat+=m.fat;
+      return sum;
+    },{calories:0,protein:0,carbs:0,netCarbs:0,fiber:0,fat:0});
+  }
+
+  function selectedRecipe(ctx){
+    const id=document.querySelector("#recipeSelect")?.value;
+    return ctx.recipes.find(r=>r.id===id)||null;
+  }
+
+  function updateRecipePreview(ctx){
+    const recipe=selectedRecipe(ctx);
+    const portions=Number(document.querySelector("#recipePortions")?.value||0);
+    const preview=document.querySelector("#recipePreview");
+    const add=document.querySelector("#recipeAdd");
+    const edit=document.querySelector("#recipeEdit");
+    if(edit)edit.disabled=!recipe;
+    if(!recipe||!portions||portions<=0){
+      if(preview)preview.textContent=recipe?"Enter portions.":"Choose a recipe.";
+      if(add)add.disabled=true;
+      return;
+    }
+    const m=recipeMacros(recipe,portions);
+    if(preview)preview.textContent=`${Math.round(m.calories)} kcal · ${round1(m.protein)}g P · ${round1(m.netCarbs)}g net C · ${round1(m.fiber)}g fiber · ${round1(m.fat)}g F`;
+    if(add)add.disabled=false;
+  }
+
+  async function addRecipeToLog(ctx){
+    const recipe=selectedRecipe(ctx);
+    const portions=Number(document.querySelector("#recipePortions")?.value||0);
+    const msg=document.querySelector("#recipeMsg");
+    if(!recipe||!portions||portions<=0){
+      if(msg)msg.textContent="Choose a recipe and portions.";
+      return;
+    }
+    const ratio=portions/Math.max(.01,Number(recipe.servings||1));
+    const m=recipeMacros(recipe,portions);
+    const scaled=(recipe.ingredients||[]).map(i=>({
+      slot:"recipe",
+      food_id:i.food_id,
+      name:i.name,
+      grams:round1(Number(i.grams||0)*ratio)
+    }));
+    if(msg)msg.textContent="Logging…";
+    const {error}=await ctx.client.from("meals").insert({
+      user_id:ctx.user.id,
+      daily_log_id:ctx.log.id,
+      meal_type:"meal",
+      planned_time:null,
+      eaten_at:new Date().toISOString(),
+      name:`${recipe.name} · ${round1(portions)} ${Number(portions)===1?"portion":"portions"}`,
+      calories:round1(m.calories),
+      protein_g:round1(m.protein),
+      carbs_g:round1(m.carbs),
+      net_carbs_g:round1(m.netCarbs),
+      fiber_g:round1(m.fiber),
+      fat_g:round1(m.fat),
+      ingredients:scaled.map(i=>`${round1(i.grams)} g ${String(i.name).toLowerCase()}`),
+      components:scaled,
+      instructions:`Recipe: ${recipe.id}`,
+      source:"manual",
+      completed:true
+    });
+    if(error){
+      if(msg)msg.textContent=error.message;
+      return;
+    }
+    localStorage.setItem(`cutquest:lastrecipe:${recipe.id}`,String(portions));
+    await recalc(ctx);
+    if(window.CutQuestRefitPlan) await window.CutQuestRefitPlan();
+    else location.reload();
+  }
+
+  function recipeIngredientRow(ctx,ingredient=null){
+    const row=document.createElement("div");
+    row.className="recipe-ingredient";
+    const currentId=ingredient?.food_id||"";
+    const fallback=currentId&&!ctx.catalog.some(f=>f.id===currentId)
+      ? `<option value="${esc(currentId)}" selected>${esc(ingredient?.name||"Missing food")}</option>`
+      : "";
+    row.innerHTML=`
+      <div>
+        <label>Ingredient</label>
+        <select class="recipe-food">
+          <option value="">Select…</option>
+          ${fallback}
+          ${catalogOptions(ctx.catalog,currentId)}
+        </select>
+      </div>
+      <div>
+        <label>g</label>
+        <input class="recipe-grams" type="number" min=".1" step=".1" value="${esc(ingredient?.grams??"")}">
+      </div>
+      <button type="button" class="btn ghost recipe-remove" aria-label="Remove ingredient" title="Remove ingredient">×</button>
+    `;
+    row.querySelector(".recipe-remove").onclick=()=>{
+      row.remove();
+      updateRecipeEditorPreview();
+    };
+    row.querySelector(".recipe-food").onchange=updateRecipeEditorPreview;
+    row.querySelector(".recipe-grams").oninput=updateRecipeEditorPreview;
+    return row;
+  }
+
+  function recipeDraftFromEditor(ctx){
+    const name=document.querySelector("#recipeName")?.value.trim();
+    const servings=Number(document.querySelector("#recipeServings")?.value||0);
+    const notes=document.querySelector("#recipeNotes")?.value.trim()||null;
+    const ingredients=[];
+    for(const row of document.querySelectorAll("#recipeIngredients .recipe-ingredient")){
+      const foodId=row.querySelector(".recipe-food")?.value;
+      const grams=Number(row.querySelector(".recipe-grams")?.value||0);
+      if(!foodId||!grams||grams<=0)continue;
+      const food=ctx.catalog.find(f=>f.id===foodId);
+      if(food) ingredients.push(ingredientSnapshot(food,grams));
+      else {
+        const old=(ctx.recipes.find(r=>r.id===editingRecipeId)?.ingredients||[]).find(i=>i.food_id===foodId);
+        if(old)ingredients.push({...old,grams:round1(grams)});
+      }
+    }
+    return {name,servings,notes,ingredients};
+  }
+
+  function updateRecipeEditorPreview(){
+    const modal=document.querySelector("#recipeModal");
+    const ctx=modal?._cutquestCtx;
+    const preview=document.querySelector("#recipeEditorPreview");
+    if(!ctx||!preview)return;
+    const draft=recipeDraftFromEditor(ctx);
+    if(!draft.servings||draft.servings<=0||!draft.ingredients.length){
+      preview.textContent="Add ingredients and servings to calculate the recipe.";
+      return;
+    }
+    const m=recipeMacros(draft,1);
+    preview.textContent=`Per portion: ${Math.round(m.calories)} kcal · ${round1(m.protein)}g P · ${round1(m.netCarbs)}g net C · ${round1(m.fiber)}g fiber · ${round1(m.fat)}g F`;
+  }
+
+  function closeRecipeEditor(){
+    document.querySelector("#recipeModal")?.remove();
+    editingRecipeId=null;
+  }
+
+  function openRecipeEditor(ctx,recipe=null){
+    closeRecipeEditor();
+    editingRecipeId=recipe?.id||null;
+    const modal=document.createElement("div");
+    modal.id="recipeModal";
+    modal.className="recipe-modal";
+    modal._cutquestCtx=ctx;
+    modal.innerHTML=`
+      <div class="recipe-dialog" role="dialog" aria-modal="true" aria-label="${recipe?"Edit recipe":"New recipe"}">
+        <div class="recipe-editor-head">
+          <div><p class="eyebrow">RECIPE</p><h2>${recipe?"Edit recipe":"New recipe"}</h2></div>
+          <button id="recipeClose" class="btn ghost" type="button">×</button>
+        </div>
+        <div class="recipe-meta">
+          <div><label>Name</label><input id="recipeName" value="${esc(recipe?.name||"")}" placeholder="Recipe name"></div>
+          <div><label>Portions in batch</label><input id="recipeServings" type="number" min=".25" step=".25" value="${esc(recipe?.servings||4)}"></div>
+        </div>
+        <div id="recipeIngredients"></div>
+        <button id="recipeAddIngredient" type="button" class="btn ghost">+ Add ingredient</button>
+        <div style="margin-top:12px"><label>Notes</label><textarea id="recipeNotes" class="recipe-notes" placeholder="Optional notes">${esc(recipe?.notes||"")}</textarea></div>
+        <div id="recipeEditorPreview" class="recipe-editor-preview tiny muted"></div>
+        <div id="recipeEditorMsg" class="tiny muted form-msg"></div>
+        <div class="recipe-editor-actions">
+          ${recipe?'<button id="recipeDelete" type="button" class="btn ghost danger">Delete recipe</button>':""}
+          <button id="recipeCancel" type="button" class="btn ghost">Cancel</button>
+          <button id="recipeSave" type="button" class="btn primary">Save recipe</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    const holder=modal.querySelector("#recipeIngredients");
+    const ingredients=Array.isArray(recipe?.ingredients)&&recipe.ingredients.length?recipe.ingredients:[null];
+    ingredients.forEach(i=>holder.appendChild(recipeIngredientRow(ctx,i)));
+    modal.querySelector("#recipeAddIngredient").onclick=()=>{
+      holder.appendChild(recipeIngredientRow(ctx,null));
+      holder.lastElementChild?.querySelector(".recipe-food")?.focus();
+    };
+    modal.querySelector("#recipeClose").onclick=closeRecipeEditor;
+    modal.querySelector("#recipeCancel").onclick=closeRecipeEditor;
+    modal.querySelector("#recipeSave").onclick=()=>saveRecipe(ctx);
+    modal.querySelector("#recipeDelete")?.addEventListener("click",()=>deleteRecipe(ctx,recipe));
+    modal.querySelector("#recipeName").oninput=updateRecipeEditorPreview;
+    modal.querySelector("#recipeServings").oninput=updateRecipeEditorPreview;
+    modal.onclick=e=>{if(e.target===modal)closeRecipeEditor();};
+    updateRecipeEditorPreview();
+  }
+
+  async function saveRecipe(ctx){
+    const msg=document.querySelector("#recipeEditorMsg");
+    const draft=recipeDraftFromEditor(ctx);
+    if(!draft.name){
+      if(msg)msg.textContent="Give the recipe a name.";
+      return;
+    }
+    if(!draft.servings||draft.servings<=0){
+      if(msg)msg.textContent="Add the number of portions in the batch.";
+      return;
+    }
+    if(!draft.ingredients.length){
+      if(msg)msg.textContent="Add at least one ingredient.";
+      return;
+    }
+    if(msg)msg.textContent="Saving…";
+    const payload={
+      user_id:ctx.user.id,
+      name:draft.name,
+      servings:draft.servings,
+      ingredients:draft.ingredients,
+      notes:draft.notes,
+      enabled:true,
+      updated_at:new Date().toISOString()
+    };
+    let result;
+    if(editingRecipeId){
+      result=await ctx.client.from("user_recipes").update(payload)
+        .eq("id",editingRecipeId).eq("user_id",ctx.user.id).select().single();
+    }else{
+      result=await ctx.client.from("user_recipes").insert(payload).select().single();
+    }
+    if(result.error){
+      if(msg)msg.textContent=result.error.message;
+      return;
+    }
+    closeRecipeEditor();
+    document.querySelector("#manualFoodBox")?.remove();
+    await inject();
+  }
+
+  async function deleteRecipe(ctx,recipe){
+    if(!recipe||!confirm(`Delete recipe "${recipe.name}"?`))return;
+    const {error}=await ctx.client.from("user_recipes").delete()
+      .eq("id",recipe.id).eq("user_id",ctx.user.id);
+    if(error){
+      const msg=document.querySelector("#recipeEditorMsg");
+      if(msg)msg.textContent=error.message;
+      return;
+    }
+    closeRecipeEditor();
+    document.querySelector("#manualFoodBox")?.remove();
+    await inject();
   }
 
   function updateCatalogPreview(ctx,resetQuantity=false){
@@ -439,6 +742,29 @@
     box.id = "manualFoodBox";
     box.className = "card manual-box";
     box.innerHTML = `
+      <div class="recipe-grid">
+        <div class="recipe-select">
+          <label>Recipe</label>
+          <select id="recipeSelect">
+            <option value="">Select…</option>
+            ${ctx.recipes.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join("")}
+          </select>
+        </div>
+        <div>
+          <label>Portions</label>
+          <input id="recipePortions" type="number" min=".25" step=".25" value="1">
+        </div>
+        <div id="recipePreview" class="recipe-preview tiny muted">Choose a recipe.</div>
+        <button id="recipeAdd" class="btn primary icon-add" aria-label="Log recipe" title="Log recipe" disabled>+</button>
+      </div>
+      <div class="recipe-tools">
+        <button id="recipeNew" class="btn ghost" type="button">+ New recipe</button>
+        <button id="recipeEdit" class="btn ghost" type="button" disabled>Edit recipe</button>
+      </div>
+      <div id="recipeMsg" class="tiny muted form-msg"></div>
+
+      <div class="manual-divider"></div>
+
       <div class="catalog-grid">
         <div class="catalog-food">
           <label>Food</label>
@@ -478,6 +804,21 @@
     `;
 
     mealGrid.parentNode.insertBefore(box,mealGrid);
+    box.querySelector("#recipeSelect").onchange = () => {
+      const recipe=selectedRecipe(ctx);
+      if(recipe){
+        const last=Number(localStorage.getItem(`cutquest:lastrecipe:${recipe.id}`));
+        box.querySelector("#recipePortions").value=last>0?last:1;
+      }
+      updateRecipePreview(ctx);
+    };
+    box.querySelector("#recipePortions").oninput = () => updateRecipePreview(ctx);
+    box.querySelector("#recipeAdd").onclick = () => addRecipeToLog(ctx);
+    box.querySelector("#recipeNew").onclick = () => openRecipeEditor(ctx,null);
+    box.querySelector("#recipeEdit").onclick = () => {
+      const recipe=selectedRecipe(ctx);
+      if(recipe)openRecipeEditor(ctx,recipe);
+    };
     box.querySelector("#catalogFood").onchange = () => updateCatalogPreview(ctx,true);
     box.querySelector("#catalogQty").oninput = () => updateCatalogPreview(ctx,false);
     box.querySelector("#catalogAdd").onclick = () => addCatalogFood(ctx);
