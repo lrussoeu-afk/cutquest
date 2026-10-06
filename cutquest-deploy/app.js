@@ -117,8 +117,9 @@
         const proteinUnder=Math.max(0,target.p-total.p);
         const proteinOver=Math.max(0,total.p-target.p);
         const netOver=Math.max(0,total.nc-target.nc);
+        const fiberUnder=Math.max(0,Number(target.fiber||0)-total.fiber);
         const emptyPenalty=active<2?80:0;
-        const score=kcalGap*.18+proteinUnder*6+proteinOver*.65+netOver*24+satPenalty+emptyPenalty;
+        const score=kcalGap*.18+proteinUnder*6+proteinOver*.65+netOver*24+fiberUnder*1.5+satPenalty+emptyPenalty;
         if(!best||score<best.score)best={score,total,amounts:[...amounts]};
         return;
       }
@@ -245,7 +246,8 @@
     return {
       kcal:Math.max(0,Number(profile.calorie_target)-eaten.kcal),
       p:Math.max(0,Number(profile.protein_target)-eaten.p),
-      nc:Math.max(0,Number(profile.net_carb_target??30)-eaten.nc)
+      nc:Math.max(0,Number(profile.net_carb_target??30)-eaten.nc),
+      fiber:Math.max(0,Number(profile.fiber_target??30)-eaten.fiber)
     };
   }
 
@@ -254,10 +256,10 @@
     const hasDinner=pending.some(m=>m.meal_type==="dinner");
     if(hasSnack&&hasDinner&&pending.length===2){
       return type==="snack"
-        ? {kcal:.22,p:.30,nc:.30}
-        : {kcal:.78,p:.70,nc:.70};
+        ? {kcal:.22,p:.30,nc:.30,fiber:.30}
+        : {kcal:.78,p:.70,nc:.70,fiber:.70};
     }
-    return {kcal:1/pending.length,p:1/pending.length,nc:1/pending.length};
+    return {kcal:1/pending.length,p:1/pending.length,nc:1/pending.length,fiber:1/pending.length};
   }
 
   function mealRowFromFit(fit,type,time){
@@ -300,7 +302,8 @@
       const target={
         kcal:Math.max(1,remain.kcal*share.kcal),
         p:Math.max(0,remain.p*share.p),
-        nc:Math.max(0,remain.nc*share.nc)
+        nc:Math.max(0,remain.nc*share.nc),
+        fiber:Math.max(0,remain.fiber*share.fiber)
       };
       const forceNew=randomizeAll||rerollType===m.meal_type;
       const fit=buildIngredientMeal(m.meal_type,target,m,forceNew);
@@ -312,6 +315,7 @@
         protein_g:fit.protein_g,
         carbs_g:fit.carbs_g,
         net_carbs_g:fit.net_carbs_g,
+        fiber_g:fit.fiber_g,
         fat_g:fit.fat_g,
         ingredients:fit.ingredients,
         components:fit.components,
@@ -528,7 +532,8 @@
         const target={
           kcal:Math.max(1,remain.kcal*share.kcal),
           p:Math.max(0,remain.p*share.p),
-          nc:Math.max(0,remain.nc*share.nc)
+          nc:Math.max(0,remain.nc*share.nc),
+          fiber:Math.max(0,remain.fiber*share.fiber)
         };
         const fit=buildIngredientMeal(item.meal_type,target,null,true);
         if(!fit)continue;
@@ -540,7 +545,15 @@
 
       if(!rows.length)return alert("CutQuest could not assemble a meal from the food catalogue.");
       const inserted=await sb.from("meals").insert(rows).select();
-      if(inserted.error)return alert(inserted.error.message);
+      if(inserted.error){
+        if(inserted.error.code==="23505"){
+          const refreshed=await sb.from("meals").select("*").eq("daily_log_id",log.id).order("created_at");
+          meals=refreshed.data||meals;
+          await refitRemaining({});
+          return;
+        }
+        return alert(inserted.error.message);
+      }
       meals=[...meals,...(inserted.data||[])];
       await syncDay();
       return;
@@ -679,10 +692,11 @@
 
   function render(){
     const loggedNow=totals(true);
-    const plan=meals.filter(m=>m.source==="generated"&&!m.completed).reduce((a,m)=>{a.kcal+=Number(m.calories||0);a.p+=Number(m.protein_g||0);a.c+=Number(m.carbs_g||0);a.nc+=Number(m.net_carbs_g??m.carbs_g??0);a.fiber+=Number(m.fiber_g||0);a.f+=Number(m.fat_g||0);return a;},{kcal:0,p:0,c:0,nc:0,fiber:0,f:0});
-    const remainingKcal=Math.max(0,Number(profile.calorie_target)-loggedNow.kcal);
-    const remainingProtein=Math.max(0,Number(profile.protein_target)-loggedNow.p);
-    const remainingNet=Math.max(0,Number(profile.net_carb_target??30)-loggedNow.nc);
+    const remaining=remainingTargets(meals);
+    const netOver=Math.max(0,loggedNow.nc-Number(profile.net_carb_target??30));
+    const remainingNetText=netOver>0
+      ? `${round1(netOver)}g net C over`
+      : `${round1(remaining.nc)}g net C left`;
     const recent7=history.slice(0,7);
     const avg=recent7.length?Math.round(recent7.reduce((a,x)=>a+Number(x.calories||0),0)/recent7.length):"—";
     const proteinHit=recent7.length?`${recent7.filter(x=>Number(x.protein_g)>=Number(x.protein_target)).length}/${recent7.length}`:"—";
@@ -736,8 +750,8 @@
 
           <div class="progress-strip">
             <div>
-              <div class="tiny"><b>REMAINING PLAN</b></div>
-              <strong>${Math.round(plan.kcal)} kcal · ${Math.round(plan.p)}g P · ${round1(plan.nc)}g net C · ${round1(plan.fiber)}g fiber</strong>
+              <div class="tiny"><b>REMAINING TARGET</b></div>
+              <strong>${Math.round(remaining.kcal)} kcal left · ${Math.round(remaining.p)}g P left · ${remainingNetText} · ${round1(remaining.fiber)}g fiber left</strong>
             </div>
           </div>
 
